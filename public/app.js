@@ -716,7 +716,7 @@ function updateInfoBadge(totalRuptures, timeLabel) {
   
   // 1. Ruptures count header
   let html = `<div style="font-size: 15px; font-weight: 700; border-bottom: 1.5px solid rgba(255,255,255,0.3); padding-bottom: 8px; margin-bottom: 10px; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px;">`;
-  html += ` <span>${totalRuptures} rupture${totalRuptures > 1 ? 's' : ''}</span>`;
+  html += `<span>📊</span> <span>${totalRuptures} rupture${totalRuptures > 1 ? 's' : ''}</span>`;
   html += `</div>`;
 
   // 2. Info items container
