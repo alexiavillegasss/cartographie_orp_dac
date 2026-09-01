@@ -91,6 +91,19 @@
       </div>
     </div>
 
+    <div class="filter-group filter-large" id="epci-filter-container" style="display: none;">
+      <label for="epci-select-trigger">Choix du/des EPCI</label>
+      <div class="custom-select" id="epci-select-container">
+        <div class="select-trigger" id="epci-select-trigger">
+          <span>Tous les EPCI (vue globale)</span>
+          <span class="arrow">▼</span>
+        </div>
+        <div class="custom-options" id="epci-custom-options-container">
+          <!-- Les cases à cocher seront injectées dynamiquement par JS -->
+        </div>
+      </div>
+    </div>
+
     <div class="filter-group filter-large" id="cpts-filter-container" style="display: none;">
       <label for="cpts-select-trigger">Choix du/des CPTS</label>
       <div class="custom-select" id="cpts-select-container">
@@ -141,7 +154,7 @@
 
   <div id="map"></div>
 
-  <script src="./app.js"></script>
+  <script src="./app.js?v=20260901_03"></script>
 </body>
 
 </html>
