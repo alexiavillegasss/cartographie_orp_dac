@@ -27,25 +27,65 @@
       <h2>Accès Sécurisé</h2>
       <p>Cartographie Observatoir des Ruptures de Parcours (ORP) Var Ouest</p>
 
+      <div style="margin-bottom: 16px; text-align: left;">
+        <label for="login-dac-select" style="color: #e2e8f0; font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px;">1. Choisissez votre DAC :</label>
+        <select id="login-dac-select" style="width: 100%; padding: 12px 14px; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, 0.3); background: #1e293b; color: #ffffff; font-family: 'Outfit', sans-serif; font-size: 14.5px; font-weight: 600; cursor: pointer; outline: none; box-sizing: border-box; -webkit-appearance: select;">
+          <option value="DAC Var Ouest" style="background: #1e293b; color: #ffffff;">DAC Var Ouest</option>
+          <option value="DAC 13 Sud" style="background: #1e293b; color: #ffffff;">DAC 13 Sud</option>
+          <option value="DAC Provence Santé Coordination" style="background: #1e293b; color: #ffffff;">DAC Provence Santé Coordination</option>
+          <option value="DAC Centre de Soutien Santé Social (C3S)" style="background: #1e293b; color: #ffffff;">DAC Centre de Soutien Santé Social (C3S)</option>
+          <option value="DAC Ressources Santé Vaucluse" style="background: #1e293b; color: #ffffff;">DAC Ressources Santé Vaucluse</option>
+          <option value="DAC Hautes-Alpes" style="background: #1e293b; color: #ffffff;">DAC Hautes-Alpes</option>
+          <option value="DAC Var Est" style="background: #1e293b; color: #ffffff;">DAC Var Est</option>
+          <option value="DAC Cannes Pays de Lérins" style="background: #1e293b; color: #ffffff;">DAC Cannes Pays de Lérins</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 4px; text-align: left;">
+        <label for="password-input" style="color: #e2e8f0; font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px;">2. Code d'accès (ORP2026) :</label>
+      </div>
+
       <div class="input-group">
-        <input type="password" id="password-input" placeholder="Mot de passe" />
+        <input type="password" id="password-input" placeholder="Entrez le code d'accès (ex: ORP2026)" />
         <button type="button" id="toggle-password" title="Afficher/masquer le mot de passe">👁️</button>
       </div>
 
-      <button id="login-button">Se connecter</button>
+      <button id="login-button">Se connecter à la session</button>
       <p id="login-error" class="error-message"></p>
     </div>
   </div>
 
-    <!-- Bouton flottant pour ouvrir la sidebar des filtres (caché par défaut car la sidebar est ouverte au départ) -->
-  <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Afficher les filtres" style="display: none;">
-    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none"
-      stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-    </svg>
-  </button>
+  <!-- Badge du DAC connecté en haut à gauche -->
+  <div id="dac-user-badge" class="dac-user-badge session-hidden" title="Session DAC active">
+    <span style="font-size: 14px;">🏥</span>
+    <span>Session :</span>
+    <b id="dac-user-name">DAC Var Ouest</b>
+    <button id="dac-logout-btn" title="Se déconnecter de la session" class="badge-logout-btn">
+      <span>Déconnexion</span>
+      <span style="font-size: 12px;">🚪</span>
+    </button>
+  </div>
 
-  <div id="topbar">
+  <!-- Bulles d'action en haut à gauche (placées juste sous le nom du DAC) -->
+  <div id="floating-actions-container" class="floating-actions-container session-hidden">
+    <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Afficher/Masquer les filtres">
+      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+      </svg>
+    </button>
+
+    <button id="data-toggle-btn" class="data-toggle-btn" title="Gestion & Import des Données DAC">
+      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="12" y1="18" x2="12" y2="12"></line>
+        <polyline points="9 15 12 12 15 15"></polyline>
+      </svg>
+    </button>
+  </div>
+
+  <div id="topbar" class="session-hidden">
     <div class="sidebar-top">
       <span class="sidebar-title">Filtres de recherche</span>
       <button id="sidebar-close" class="sidebar-close-btn" title="Masquer les filtres">✕</button>
@@ -142,19 +182,125 @@
       <div id="info" style="width: 100%;"></div>
     </div>
 
-    <button id="logout-button" title="Se déconnecter" class="logout-btn">
-      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-        <polyline points="16 17 21 12 16 7"></polyline>
-        <line x1="21" y1="12" x2="9" y2="12"></line>
-      </svg>
-    </button>
+
   </div>
 
   <div id="map"></div>
 
-  <script src="./app.js?v=20260901_03"></script>
+  <!-- Modal Gestion & Importation des Données DAC -->
+  <div id="data-import-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">📊</span>
+          <h3 style="margin: 0; font-size: 18px; color: var(--blue-dark);">Gestion & Import des Données DAC</h3>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="news-modal-open-btn" class="news-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; width: auto;" title="Voir les actualités des mises à jour des DAC">
+            <span>📰 Actualités DAC</span>
+          </button>
+          <button id="data-modal-close-btn" class="modal-close-btn">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="import-section">
+          <h4>📥 Importer un nouveau fichier de ruptures</h4>
+          <p class="import-desc">
+            Sélectionnez votre DAC puis choisissez un fichier CSV de ruptures à ajouter.
+            Les nouvelles ruptures s'ajouteront sur la carte avec une couleur distincte et les anciennes seront conservées.
+          </p>
+
+
+
+          <div class="form-row">
+            <label for="import-file-input">Fichier CSV :</label>
+            <input type="file" id="import-file-input" accept=".csv,text/csv" class="form-file" />
+          </div>
+
+          <div class="form-actions">
+            <button id="import-submit-btn" class="btn-primary">
+              <span>📤 Importer sur la carte</span>
+            </button>
+            <span id="import-status-msg" class="status-msg"></span>
+          </div>
+
+          <div class="download-sample-box">
+            <span>📄 Modèle de fichier recommandé :</span>
+            <a href="./exemple_import_dac.csv" download="exemple_import_dac.csv" class="sample-link">Télécharger le fichier exemple (.csv)</a>
+          </div>
+        </div>
+
+        <hr class="modal-divider" />
+
+        <div class="managed-section">
+          <h4>📂 Documents importés enregistrés</h4>
+          <div id="imported-documents-list" class="documents-list">
+            <p class="empty-docs-msg">Aucun fichier n'a été importé manuellement pour le moment.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de confirmation de remplacement / cumul -->
+  <div id="import-confirm-modal" class="modal-overlay hidden" style="z-index: 10005;">
+    <div class="modal-card" style="max-width: 500px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">❓</span>
+          <h3 style="margin: 0; font-size: 17px; color: var(--blue-dark);">Remplacement ou Cumul des fichiers ?</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13.5px; color: #334155; line-height: 1.5; margin-top: 0;">
+          Un ou plusieurs fichiers ont déjà été importés. Que souhaitez-vous faire avec le nouveau fichier ?
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 18px;">
+          <button id="confirm-replace-btn" class="btn-primary" style="background: #e53e3e; justify-content: center; display: flex; flex-direction: column; align-items: center; padding: 12px; gap: 2px;">
+            <span style="font-size: 14px; font-weight: 700;">🔄 Remplacer l'ancien fichier</span>
+            <span style="font-size: 11.5px; font-weight: 400; opacity: 0.95;">(Supprime le précédent et affiche uniquement le nouveau)</span>
+          </button>
+          
+          <button id="confirm-append-btn" class="btn-primary" style="background: #319795; justify-content: center; display: flex; flex-direction: column; align-items: center; padding: 12px; gap: 2px;">
+            <span style="font-size: 14px; font-weight: 700;">➕ Conserver et cumuler</span>
+            <span style="font-size: 11.5px; font-weight: 400; opacity: 0.95;">(Garde les anciens fichiers et ajoute le nouveau)</span>
+          </button>
+
+          <button id="confirm-cancel-btn" style="background: #e2e8f0; color: #4a5568; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 4px;">
+            Annuler l'importation
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js?v=20260902_35"></script>
+
+  <!-- Modal Actualités Mises à Jour DAC -->
+  <div id="news-modal" class="modal-overlay hidden" style="z-index: 10002;">
+    <div class="modal-card" style="max-width: 560px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">📰</span>
+          <h3 style="margin: 0; font-size: 18px; color: var(--blue-dark);">Actualités Mises à Jour DAC</h3>
+        </div>
+        <button id="news-modal-close-btn" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p style="font-size: 13px; color: #4a5568; margin-top: 0; line-height: 1.4;">
+          Historique des dernières données de ruptures de parcours importées manuellement par les DAC de la région :
+        </p>
+
+        <div id="news-list-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px; max-height: 380px; overflow-y: auto;">
+          <!-- Généré dynamiquement en JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 
 </html>
