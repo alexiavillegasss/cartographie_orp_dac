@@ -38,18 +38,26 @@ let importedFiles = []; // [{ id, dacName, fileName, importDate, rowCount, rows 
 
 function loadImportedFilesFromStorage() {
   try {
-    // Nettoyage automatique des anciens points de test en mémoire (version v20260902_29)
-    const resetDone = localStorage.getItem("orp_clean_reset_v29");
-    if (!resetDone) {
-      localStorage.removeItem("orp_imported_files");
-      localStorage.setItem("orp_clean_reset_v29", "true");
-      importedFiles = [];
-      return;
-    }
-
     const raw = localStorage.getItem("orp_imported_files");
     if (raw) {
       importedFiles = JSON.parse(raw);
+      // Nettoyer et réparer automatiquement les accents sur tous les documents en mémoire
+      importedFiles.forEach(doc => {
+        if (doc.rows && Array.isArray(doc.rows)) {
+          doc.rows = doc.rows.map(r => {
+            const rawOrigins = Array.isArray(r.origins) ? r.origins : (r.origins ? [r.origins] : []);
+            const cleanOrigins = rawOrigins.map(o => normalizeToStandardDifficulty(cleanAndRepairAccents(o))).filter(Boolean);
+            return {
+              ...r,
+              label: cleanAndRepairAccents(r.label),
+              detail: cleanAndRepairAccents(r.detail),
+              sourceFile: cleanAndRepairAccents(r.sourceFile),
+              sourceDac: cleanAndRepairAccents(r.sourceDac),
+              origins: cleanOrigins.length > 0 ? cleanOrigins : [STANDARD_DIFFICULTIES[0]]
+            };
+          });
+        }
+      });
     } else {
       importedFiles = [];
     }
@@ -1077,9 +1085,9 @@ function matchesCategory(row, categories) {
     return true;
   }
 
-  const rowOrigins = Array.isArray(row.origins) ? row.origins.map(normStr) : [];
+  const rowOrigins = Array.isArray(row.origins) ? row.origins.map(normalizeToStandardDifficulty) : [];
   return catArray.some(cat => {
-    const target = normStr(cat);
+    const target = normalizeToStandardDifficulty(cat);
     return rowOrigins.some(o => o === target);
   });
 }
@@ -1257,15 +1265,15 @@ function render() {
           ` : ""}
 
           ${r.isManual ? `
-            <div style="margin-top: 12px; padding: 8px 10px; background: #fffaf0; border: 1px solid #feebc8; border-radius: 6px; font-size: 11.5px; color: #c05621; line-height: 1.4;">
-              <div style="font-weight: 700; display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+            <div style="margin-top: 10px; padding: 8px 10px; background: #fffaf0; border: 1px solid #fed7aa; border-radius: 6px; line-height: 1.4;">
+              <div style="font-size: 11.5px; font-weight: 700; color: #c2410c; display: flex; align-items: center; gap: 4px; margin-bottom: 3px;">
                 <span>📌 Importé par :</span> <span>${r.sourceDac || "DAC"}</span>
               </div>
-              <div style="font-size: 11px; opacity: 0.9;">
-                <b>Dernière mise à jour :</b> ${r.importDate || "Aujourd'hui"}
+              <div style="font-size: 10.5px; color: #7c2d12; opacity: 0.9;">
+                <span style="font-weight: 600;">Dernière mise à jour :</span> ${r.importDate || "Aujourd'hui"}
               </div>
-              <div style="font-size: 11px; opacity: 0.85; margin-top: 1px;">
-                <b>Fichier :</b> ${r.sourceFile || "Fichier CSV"}
+              <div style="font-size: 10.5px; color: #7c2d12; opacity: 0.9; margin-top: 2px; word-break: break-all;">
+                <span style="font-weight: 600;">Fichier :</span> ${r.sourceFile || "Fichier CSV"}
               </div>
             </div>
           ` : ""}
@@ -1791,11 +1799,120 @@ function fixDoubleUtf8(str) {
   return str;
 }
 
+const STANDARD_DIFFICULTIES = [
+  "Absence ou insuffisance de professionnels / services sur le territoire",
+  "Difficultés d'articulation entre les professionnels / services sur le territoire",
+  "Difficultés dans la réalisation de sa mission pour les professionnels / services",
+  "Difficultés de recours aux professionnels/services : critères et contrainte d’entrée en structure (manque de place, modalité d’accès aux structures)",
+  "Difficultés à la suite de la perte d’un ou des aidants (décès - maladie - indisponibilité …)"
+];
+
+function normalizeToStandardDifficulty(str) {
+  if (!str) return "";
+  const s = String(str).trim();
+  const lower = s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (lower.includes("absence") || lower.includes("insuffisance")) {
+    return STANDARD_DIFFICULTIES[0];
+  }
+  if (lower.includes("articulation")) {
+    return STANDARD_DIFFICULTIES[1];
+  }
+  if (lower.includes("realisation") || lower.includes("mission")) {
+    return STANDARD_DIFFICULTIES[2];
+  }
+  if (lower.includes("recours") || lower.includes("critere") || lower.includes("contrainte") || lower.includes("modalite") || lower.includes("acces aux droits")) {
+    return STANDARD_DIFFICULTIES[3];
+  }
+  if (lower.includes("aidant") || lower.includes("perte") || lower.includes("deces") || lower.includes("maladie") || lower.includes("indisponibilite")) {
+    return STANDARD_DIFFICULTIES[4];
+  }
+
+  for (const std of STANDARD_DIFFICULTIES) {
+    if (std.toLowerCase() === lower) return std;
+  }
+  return s;
+}
+
+function cleanAndRepairAccents(str) {
+  if (!str) return "";
+  let s = String(str);
+
+  s = fixDoubleUtf8(s);
+
+  if (s.includes("\uFFFD") || s.includes("")) {
+    s = s.replace(/Difficult[^\s\w]*s/gi, "Difficultés")
+         .replace(/la suite de la perte d[^\s\w]*un/gi, "la suite de la perte d'un")
+         .replace(/d[^\s\w]*c[^\s\w]*s/gi, "décès")
+         .replace(/indisponibilit[^\s\w]*/gi, "indisponibilité")
+         .replace(/Acc[^\s\w]*s/gi, "Accès")
+         .replace(/m[^\s\w]*decin/gi, "médecin")
+         .replace(/r[^\s\w]*f[^\s\w]*rent/gi, "référent")
+         .replace(/Sant[^\s\w]*/gi, "Santé")
+         .replace(/Personnes[^\s\w]*g[^\s\w]*es/gi, "Personnes âgées")
+         .replace(/Personne[^\s\w]*g[^\s\w]*e/gi, "Personne âgée")
+         .replace(/P[^\s\w]*diatrie/gi, "Pédiatrie")
+         .replace(/Pr[^\s\w]*cision/gi, "Précision")
+         .replace(/D[^\s\w]*tail/gi, "Détail")
+         .replace(/r[^\s\w]*alisation/gi, "réalisation")
+         .replace(/crit[^\s\w]*res/gi, "critères")
+         .replace(/modalit[^\s\w]*/gi, "modalité")
+         .replace(/d[^\s\w]*acc[^\s\w]*s/gi, "d'accès")
+         .replace(/d[^\s\w]*entr[^\s\w]*e/gi, "d'entrée")
+         .replace(/qu[^\s\w]*est/gi, "qu'est")
+         .replace(/l[^\s\w]*origine/gi, "l'origine")
+         .replace(/l[^\s\w]*v[^\s\w]*nement/gi, "l'évènement")
+         .replace(/d[^\s\w]*un/gi, "d'un")
+         .replace(/d[^\s\w]*une/gi, "d'une")
+         .replace(/c[^\s\w]*t[^\s\w]*/gi, "côté")
+         .replace(/R[^\s\w]*serv[^\s\w]*/gi, "Réservé")
+         .replace(/int[^\s\w]*r[^\s\w]*t/gi, "intérêt");
+
+    s = s.replace(/[\uFFFD]+/g, "'").replace(/\s{2,}/g, " ");
+  }
+
+  return s;
+}
+
+async function readCsvFileText(file) {
+  if (!file) return "";
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  let text = "";
+
+  // 1. Essai décodage UTF-8 strict (avec fatal: true pour rejeter les octets ANSI/Windows-1252)
+  try {
+    const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+    text = utf8Decoder.decode(bytes);
+  } catch (errUtf8) {
+    // 2. Si le décodage UTF-8 échoue (fichier Excel exporté en ANSI/Windows-1252), utiliser Windows-1252
+    try {
+      text = new TextDecoder("windows-1252").decode(bytes);
+    } catch (e1) {
+      try {
+        text = new TextDecoder("iso-8859-1").decode(bytes);
+      } catch (e2) {
+        text = new TextDecoder().decode(bytes);
+      }
+    }
+  }
+
+  // Si le texte comporte des caractères de remplacement (\uFFFD), forcer le décodage Windows-1252
+  if (text.includes("\uFFFD") || text.includes("")) {
+    try {
+      text = new TextDecoder("windows-1252").decode(bytes);
+    } catch (e) {}
+  }
+
+  return cleanAndRepairAccents(text);
+}
+
 function cleanFieldValue(val) {
   if (!val) return "";
   let s = String(val).trim();
   s = s.replace(/^["'\s]+|["'\s]+$/g, "");
-  return s.trim();
+  return cleanAndRepairAccents(s.trim());
 }
 
 function splitLineRobust(line, delimiter) {
@@ -2133,7 +2250,8 @@ function buildRowsFromGoogleForms(objs, cpGeo) {
     };
 
     const date = parseToISODate(o[keyDate]);
-    const origins = splitMulti(o[keyOrig]);
+    const rawOrigins = splitMulti(o[keyOrig]);
+    const origins = rawOrigins.map(normalizeToStandardDifficulty).filter(Boolean);
     origins.forEach(x => catsSet.add(x));
 
     const parcours = splitMulti(o[keyParcours]);
@@ -2154,7 +2272,7 @@ function buildRowsFromGoogleForms(objs, cpGeo) {
 
   return {
     rows,
-    categories: ["TOTAL", ...Array.from(catsSet).filter(Boolean).sort()],
+    categories: ["TOTAL", ...STANDARD_DIFFICULTIES],
     parcoursList: Array.from(parcoursSet).filter(Boolean).sort()
   };
 }
@@ -2196,15 +2314,7 @@ function rebuildParcoursFromRows(rows) {
 }
 
 function rebuildCategoriesFromRows(rows) {
-  const set = new Set();
-  (rows || []).forEach(r => {
-    if (Array.isArray(r.origins)) {
-      r.origins.forEach(x => { if (x) set.add(x); });
-    } else if (r.origins) {
-      set.add(r.origins);
-    }
-  });
-  return ["TOTAL", ...Array.from(set).filter(Boolean).sort()];
+  return ["TOTAL", ...STANDARD_DIFFICULTIES];
 }
 
 if (applyCsv) {
@@ -2218,8 +2328,7 @@ if (applyCsv) {
     const cpGeo = await loadCpGeo();
 
     const file = csvFile.files[0];
-    let text = await file.text();
-      text = fixDoubleUtf8(text);
+    let text = await readCsvFileText(file);
 
     const table = parseCSV(text);
     const objs = toObjects(table);
@@ -2253,18 +2362,15 @@ async function sha256(message) {
 }
 
 const ALL_DACS = [
-  "DAC Var Ouest",
-  "DAC Var Est",
   "DAC 13 Sud",
+  "DAC Cap Azur Santé",
   "DAC Centre de Soutien Santé Social (C3S)",
-  "DAC Provence Santé Coordination",
-  "DAC Ressources Santé Vaucluse",
+  "Dac Est Azur",
   "DAC Hautes-Alpes",
-  "DAC Alpes de Haute-Provence",
-  "DAC Cannes Pays de Lérins",
-  "DAC Pays de Fayence",
-  "DAC Estérel Côte d'Azur",
-  "DAC Maralpin"
+  "DAC Provence Santé Coordination",
+  "Dac Ressources Santé Vaucluse",
+  "DAC Var Est",
+  "DAC Var Ouest"
 ];
 
 function getCurrentDAC() {
@@ -2520,8 +2626,7 @@ function initDataImportModal() {
     showImportStatus("Chargement et traitement du fichier...", "info");
 
     try {
-      let text = await file.text();
-      text = fixDoubleUtf8(text);
+      let text = await readCsvFileText(file);
       const cpGeo = await loadCpGeo();
       const table = parseCSV(text);
       const objs = toObjects(table);
