@@ -1840,7 +1840,7 @@ function cleanAndRepairAccents(str) {
 
   s = fixDoubleUtf8(s);
 
-  if (s.includes("\uFFFD") || s.includes("")) {
+  if (s.includes("\uFFFD")) {
     s = s.replace(/Difficult[^\s\w]*s/gi, "Difficultés")
          .replace(/la suite de la perte d[^\s\w]*un/gi, "la suite de la perte d'un")
          .replace(/d[^\s\w]*c[^\s\w]*s/gi, "décès")
@@ -1881,7 +1881,7 @@ async function readCsvFileText(file) {
 
   let text = "";
 
-  // 1. Essai décodage UTF-8 strict (avec fatal: true pour rejeter les octets ANSI/Windows-1252)
+  // 1. Essai décodage UTF-8 strict (fatal: true rejette les octets Windows-1252 invalides)
   try {
     const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
     text = utf8Decoder.decode(bytes);
@@ -1898,10 +1898,13 @@ async function readCsvFileText(file) {
     }
   }
 
-  // Si le texte comporte des caractères de remplacement (\uFFFD), forcer le décodage Windows-1252
-  if (text.includes("\uFFFD") || text.includes("")) {
+  // Si UTF-8 a été utilisé mais que le texte contient des \uFFFD, essayer de décoder en Windows-1252
+  if (text.includes("\uFFFD")) {
     try {
-      text = new TextDecoder("windows-1252").decode(bytes);
+      const winText = new TextDecoder("windows-1252").decode(bytes);
+      if (!winText.includes("\uFFFD")) {
+        text = winText;
+      }
     } catch (e) {}
   }
 
@@ -1912,7 +1915,7 @@ function cleanFieldValue(val) {
   if (!val) return "";
   let s = String(val).trim();
   s = s.replace(/^["'\s]+|["'\s]+$/g, "");
-  return cleanAndRepairAccents(s.trim());
+  return s.trim();
 }
 
 function splitLineRobust(line, delimiter) {
@@ -1980,6 +1983,7 @@ function parseCSV(text) {
 }
 
 function toObjects(table) {
+  if (!table || table.length === 0) return [];
   const header = table[0].map(h => String(h ?? "").trim());
   const out = [];
   for (let r = 1; r < table.length; r++) {
@@ -2063,7 +2067,6 @@ function parseToISODate(dateStr) {
     return `${yy}-${mm}-${dd}`;
   }
 
-  // Fallback universel : ne jamais rejeter une ligne !
   return "2026-09-01";
 }
 
@@ -2135,7 +2138,6 @@ function findBestGeoMatch(communeName, cpGeo) {
     }
   }
 
-  // Fallback universel : géolocalisation par défaut pour n'importe quelle commune personnalisée ou hors PACA !
   return {
     cp: "83000",
     lat: 43.35 + (Math.random() * 0.3 - 0.15),
@@ -2170,7 +2172,6 @@ async function loadCpGeo() {
   
   const map = {};
 
-  // 1. Charger var_communes.csv (153 communes du Var)
   try {
     const res = await fetch("./var_communes.csv");
     const text = await res.text();
@@ -2193,7 +2194,6 @@ async function loadCpGeo() {
     console.warn("Erreur chargement var_communes.csv:", e);
   }
 
-  // 2. Compléter avec TOUTES les 962 communes PACA de communes_2026.geojson (04, 05, 06, 13, 83, 84)
   if (COMMUNES_GEO && COMMUNES_GEO.features) {
     COMMUNES_GEO.features.forEach(f => {
       const props = f.properties || {};
@@ -2225,18 +2225,18 @@ function buildRowsFromGoogleForms(objs, cpGeo) {
   const catsSet = new Set();
   const parcoursSet = new Set();
 
-  if (objs.length === 0) {
+  if (!objs || objs.length === 0) {
     return { rows: [], categories: ["TOTAL"], parcoursList: [] };
   }
 
   const keys = Object.keys(objs[0]);
   const findKey = (sub) => keys.find(k => k.toLowerCase().includes(sub.toLowerCase()));
 
-  const keyCommune = findKey("commune") || findKey("ville") || findKey("cp") || findKey("code postal") || keys[1] || keys[0];
-  const keyDate = findKey("date de survenue") || findKey("date") || findKey("survenue") || keys[2] || keys[0];
-  const keyOrig = findKey("origine de la situation") || findKey("origine") || findKey("difficulté") || findKey("difficult") || findKey("rupture") || findKey("motif") || keys[3] || keys[0];
-  const keyDetail = findKey("difficult") || findKey("detail") || findKey("détail") || findKey("précision") || findKey("remarque") || findKey("commentaire") || keys[5] || keys[0];
-  const keyParcours = findKey("parcours") || keys[4] || keys[0];
+  const keyCommune = findKey("commune") || findKey("ville") || findKey("cp") || findKey("code postal") || (keys.length > 1 ? keys[1] : keys[0]);
+  const keyDate = findKey("date de survenue") || findKey("survenue") || findKey("date") || (keys.length > 2 ? keys[2] : keys[0]);
+  const keyOrig = findKey("origine") || findKey("motif") || findKey("rupture") || (keys.length > 3 ? keys[3] : keys[0]);
+  const keyParcours = findKey("parcours") || (keys.length > 4 ? keys[4] : keys[0]);
+  const keyDetail = findKey("détail") || findKey("detail") || findKey("précision") || findKey("remarque") || findKey("commentaire") || findKey("difficult") || (keys.length > 5 ? keys[5] : keys[0]);
 
   for (const o of objs) {
     const communeName = String(o[keyCommune] ?? "").trim();
