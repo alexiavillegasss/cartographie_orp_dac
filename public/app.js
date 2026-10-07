@@ -32,7 +32,8 @@ const csvFile = document.getElementById("csvFile");
 const applyCsv = document.getElementById("applyCsv");
 const csvStatus = document.getElementById("csvStatus");
 
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_apoBZZyaQ7hVW2pT6xJlfkHWEr2rlHoeRGZsjty9wftpXYQCt-GXdeYd18gVVsdKh2FZtvnkZbgx/pub?gid=1819733423&single=true&output=csv";
+
+
 
 let importedFiles = []; // [{ id, dacName, fileName, importDate, rowCount, rows }]
 
@@ -1471,20 +1472,16 @@ function normalizeGeometry(geometry) {
 }
 
 // -------------------------
-// Load Google Sheet en direct
+// Traitement des Données Importées
 // -------------------------
-let LIVE_ROWS = [];
-
 function rebuildAllDataRows() {
   loadImportedFilesFromStorage();
   const manualRows = getManualRows();
 
-  const merged = mergeRows(LIVE_ROWS, manualRows);
-  
   DATA = {
-    categories: rebuildCategoriesFromRows(merged.rows),
-    rows: attachEPCIToRows(merged.rows),
-    parcoursList: rebuildParcoursFromRows(merged.rows)
+    categories: rebuildCategoriesFromRows(manualRows),
+    rows: attachEPCIToRows(manualRows),
+    parcoursList: rebuildParcoursFromRows(manualRows)
   };
 
   setCategoryOptions(DATA.categories);
@@ -1499,28 +1496,11 @@ function rebuildAllDataRows() {
     parcoursSel.value = "ALL";
   }
 
-  render();
-}
-
-async function loadLiveGoogleSheet() {
-  try {
-    info.textContent = "Téléchargement des données en direct...";
-
-    const cpGeo = await loadCpGeo();
-    const response = await fetch(GOOGLE_SHEET_CSV_URL);
-    const csvText = await response.text();
-
-    const table = parseCSV(csvText);
-    const objs = toObjects(table);
-
-    const built = buildRowsFromGoogleForms(objs, cpGeo);
-    LIVE_ROWS = built.rows;
-
-    rebuildAllDataRows();
-  } catch (error) {
-    console.error("Erreur lors de la récupération des données :", error);
-    info.textContent = "Erreur : " + error.message;
+  if (manualRows.length === 0 && info) {
+    info.innerHTML = "<div style='padding: 8px 12px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; color: #eff6ff; font-size: 13px;'>ℹ️ Aucun fichier importé. Cliquez sur le bouton <b>Gestion & Import des Données DAC</b> pour importer un fichier CSV.</div>";
   }
+
+  render();
 }
 
 // -------------------------
@@ -1758,7 +1738,7 @@ const COMMUNES_GEO_PROMISE = Promise.all([
   if (DATA) {
     DATA.rows = attachEPCIToRows(DATA.rows);
   }
-  loadLiveGoogleSheet();
+  rebuildAllDataRows();
 });
 
 // -------------------------
@@ -1787,7 +1767,7 @@ if (dacSel) {
 }
 
 // -------------------------
-// CSV Parser & Google Form helper functions
+// CSV Parser helper functions
 // -------------------------
 function fixDoubleUtf8(str) {
   if (!str) return "";
@@ -2220,7 +2200,7 @@ async function loadCpGeo() {
   return CP_GEO;
 }
 
-function buildRowsFromGoogleForms(objs, cpGeo) {
+function buildRowsFromCSV(objs, cpGeo) {
   const rows = [];
   const catsSet = new Set();
   const parcoursSet = new Set();
@@ -2333,7 +2313,7 @@ if (applyCsv) {
     const table = parseCSV(text);
     const objs = toObjects(table);
 
-    const built = buildRowsFromGoogleForms(objs, cpGeo);
+    const built = buildRowsFromCSV(objs, cpGeo);
 
     if (!DATA) DATA = { categories: ["TOTAL"], rows: [] };
 
@@ -2636,7 +2616,7 @@ function initDataImportModal() {
         return;
       }
 
-      const built = buildRowsFromGoogleForms(objs, cpGeo);
+      const built = buildRowsFromCSV(objs, cpGeo);
 
       if (!built || !built.rows || built.rows.length === 0) {
         showImportStatus("Aucune rupture valide n'a pu être trouvée dans ce fichier.", "error");
