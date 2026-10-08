@@ -15,6 +15,9 @@ let selectedCategories = ["TOTAL"];
 let selectedDACs = ["TOTAL"];
 let selectedCPTS = ["TOTAL"];
 let selectedEPCIs = ["TOTAL"];
+let selectedCommunes = ["TOTAL"];
+let activeFavoriteName = null;
+let COMMUNES_BY_DPT = null;
 
 const info = document.getElementById("info");
 const modeSel = document.getElementById("mode");
@@ -27,6 +30,14 @@ const dacSel = document.getElementById("dacSelect");
 const dacContainer = document.getElementById("dac-filter-container");
 const epciContainer = document.getElementById("epci-filter-container");
 const cptsContainer = document.getElementById("cpts-filter-container");
+const communeContainer = document.getElementById("commune-filter-container");
+
+const createGroupingBox = document.getElementById("create-grouping-box");
+const favoritesPillsList = document.getElementById("favorites-pills-list");
+const favoritesSelect = document.getElementById("favorites-select");
+const favoriteNameInput = document.getElementById("favorite-name-input");
+const saveFavoriteBtn = document.getElementById("save-favorite-btn");
+const deleteFavoriteBtn = document.getElementById("delete-favorite-btn");
 
 const csvFile = document.getElementById("csvFile");
 const applyCsv = document.getElementById("applyCsv");
@@ -73,6 +84,117 @@ function saveImportedFilesToStorage() {
     localStorage.setItem("orp_imported_files", JSON.stringify(importedFiles));
   } catch (e) {
     console.error("Erreur de sauvegarde localStorage orp_imported_files:", e);
+  }
+}
+
+const FAVORITES_STORAGE_KEY = "orp_communes_favorites";
+
+function loadFavoritesFromStorage() {
+  try {
+    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error("Erreur lors du chargement des favoris :", e);
+    return [];
+  }
+}
+
+function saveFavoritesToStorage(favorites) {
+  try {
+    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
+  } catch (e) {
+    console.error("Erreur lors de la sauvegarde des favoris :", e);
+  }
+}
+
+function deleteFavoriteByName(favName) {
+  if (!favName) return;
+
+  if (confirm(`Voulez-vous vraiment supprimer le regroupement favori "${favName}" ?`)) {
+    let favorites = loadFavoritesFromStorage();
+    favorites = favorites.filter(f => f.name !== favName);
+    saveFavoritesToStorage(favorites);
+    
+    if (activeFavoriteName === favName) {
+      selectedCommunes = ["TOTAL"];
+      activeFavoriteName = null;
+    }
+    
+    syncCommuneCheckboxesUI();
+    updateCommuneSelectTriggerText();
+    updateCreateGroupingBoxVisibility();
+    updateFavoritesDropdownUI();
+    render();
+  }
+}
+
+function updateFavoritesDropdownUI() {
+  const favorites = loadFavoritesFromStorage();
+  const dropdownWrapper = document.getElementById("favorites-dropdown-wrapper");
+
+  // Si <= 4 favoris : on affiche uniquement les pilules (jusqu'à 4) et on masque le menu déroulant
+  // Si > 4 favoris : les pilules disparaissent et sont réunies dans le menu déroulant
+  if (favorites.length <= 4) {
+    if (dropdownWrapper) dropdownWrapper.style.display = "none";
+    if (favoritesPillsList) {
+      favoritesPillsList.style.display = "flex";
+      favoritesPillsList.innerHTML = "";
+      if (favorites.length === 0) {
+        favoritesPillsList.innerHTML = `<span style="font-size: 11.5px; color: #94a3b8; font-style: italic;">Aucun regroupement favori enregistré</span>`;
+      } else {
+        favorites.forEach(fav => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "fav-pill" + (activeFavoriteName === fav.name ? " active" : "");
+          btn.title = `${fav.name} (${fav.communes.length} commune${fav.communes.length > 1 ? 's' : ''})`;
+          btn.innerHTML = `<span>⭐ ${fav.name}</span>`;
+
+          btn.addEventListener("click", () => {
+            if (modeSel && modeSel.value !== "commune") {
+              modeSel.value = "commune";
+            }
+
+            if (activeFavoriteName === fav.name) {
+              selectedCommunes = ["TOTAL"];
+              activeFavoriteName = null;
+            } else {
+              selectedCommunes = [...fav.communes];
+              activeFavoriteName = fav.name;
+            }
+            syncCommuneCheckboxesUI();
+            updateCommuneSelectTriggerText();
+            updateCreateGroupingBoxVisibility();
+            updateFavoritesDropdownUI();
+            render();
+          });
+
+          favoritesPillsList.appendChild(btn);
+        });
+      }
+    }
+  } else {
+    // Plus de 4 favoris -> On masque les pilules et on affiche le menu déroulant avec l'ensemble des favoris
+    if (favoritesPillsList) favoritesPillsList.style.display = "none";
+    if (dropdownWrapper) dropdownWrapper.style.display = "flex";
+
+    if (favoritesSelect) {
+      favoritesSelect.innerHTML = `<option value="">-- Choisir un regroupement favori (${favorites.length}) --</option>`;
+      favorites.forEach(fav => {
+        const opt = document.createElement("option");
+        opt.value = fav.name;
+        opt.textContent = `⭐ ${fav.name} (${fav.communes.length} commune${fav.communes.length > 1 ? 's' : ''})`;
+        if (activeFavoriteName === fav.name) opt.selected = true;
+        favoritesSelect.appendChild(opt);
+      });
+      if (!activeFavoriteName) {
+        favoritesSelect.value = "";
+      }
+    }
+  }
+
+  // Le bouton de suppression s'affiche UNIQUEMENT si un favori est actuellement actif
+  if (deleteFavoriteBtn) {
+    deleteFavoriteBtn.style.display = activeFavoriteName ? "inline-flex" : "none";
   }
 }
 
@@ -360,6 +482,7 @@ function closeAllDropdowns() {
   document.getElementById("dac-custom-options-container")?.classList.remove("show");
   document.getElementById("epci-custom-options-container")?.classList.remove("show");
   document.getElementById("cpts-custom-options-container")?.classList.remove("show");
+  document.getElementById("commune-custom-options-container")?.classList.remove("show");
 }
 
 document.getElementById("select-trigger")?.addEventListener("click", (e) => {
@@ -1073,6 +1196,15 @@ function filterRowsByDAC(rows) {
   });
 }
 
+function filterRowsByCommune(rows) {
+  if (selectedCommunes.includes("TOTAL") || selectedCommunes.length === 0) return rows;
+  return rows.filter(r => {
+    return selectedCommunes.some(selCommune => 
+      selCommune === r.label || normalizeName(selCommune) === normalizeName(r.label)
+    );
+  });
+}
+
 // -------------------------
 // Aggregation & Matching
 // -------------------------
@@ -1177,6 +1309,7 @@ function render() {
   layer.clearLayers();
   const mode = modeSel.value;
 
+  if (communeContainer) communeContainer.style.display = (mode === "commune") ? "inline-flex" : "none";
   if (dacContainer) dacContainer.style.display = (mode === "dac") ? "inline-flex" : "none";
   if (cptsContainer) cptsContainer.style.display = (mode === "cpts") ? "inline-flex" : "none";
   if (epciContainer) epciContainer.style.display = (mode === "epci") ? "inline-flex" : "none";
@@ -1201,7 +1334,7 @@ function render() {
   })();
 
   const rawRows = DATA ? DATA.rows : [];
-  const rowsTime = filterRowsByEPCI(filterRowsByCPTS(filterRowsByDAC(filterRowsByParcours(filterRowsByTime(rawRows)))));
+  const rowsTime = filterRowsByCommune(filterRowsByEPCI(filterRowsByCPTS(filterRowsByDAC(filterRowsByParcours(filterRowsByTime(rawRows))))));
 
   // Mode Commune, DAC, CPTS, EPCI (Clustering & Marqueurs individuels)
   if (mode === "commune" || mode === "dac" || mode === "cpts" || mode === "epci") {
@@ -1438,7 +1571,24 @@ function updateCommunesStyle() {
         dashArray = "2 2";
       }
     } else {
-      fillColor = colorForCommune(codeOrName);
+      const isCommuneSelected = !selectedCommunes.includes("TOTAL") && selectedCommunes.some(c => c === name || normalizeName(c) === normalizeName(name));
+      const isAllCommunes = selectedCommunes.includes("TOTAL");
+
+      if (isAllCommunes) {
+        fillColor = colorForCommune(codeOrName);
+      } else if (isCommuneSelected) {
+        fillColor = colorForCommune(codeOrName);
+        fillOpacity = 0.75;
+        strokeColor = "#e53e3e";
+        strokeWidth = 2.5;
+        dashArray = "";
+      } else {
+        fillColor = "transparent";
+        fillOpacity = 0;
+        strokeColor = "#cbd5e0";
+        strokeWidth = 0.5;
+        dashArray = "2 2";
+      }
     }
 
     return {
@@ -1734,6 +1884,9 @@ const COMMUNES_GEO_PROMISE = Promise.all([
   if (EPCI_BY_DEP) {
     setEpciOptions(EPCI_BY_DEP);
   }
+
+  setCommuneOptions(communesGeo);
+  updateFavoritesDropdownUI();
 
   if (DATA) {
     DATA.rows = attachEPCIToRows(DATA.rows);
@@ -2736,3 +2889,290 @@ function initDataImportModal() {
     rebuildAllDataRows();
   }
 }
+
+// -------------------------
+// Communes & Favorites UI Logic
+// -------------------------
+document.getElementById("commune-custom-options-container")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+});
+
+function handleCommuneDptSelectionChange(dpt, isChecked, communesByDpt) {
+  const list = Array.from(communesByDpt[dpt] || []);
+  if (isChecked) {
+    selectedCommunes = selectedCommunes.filter(c => c !== "TOTAL");
+    list.forEach(cName => {
+      if (!selectedCommunes.includes(cName)) {
+        selectedCommunes.push(cName);
+      }
+    });
+  } else {
+    selectedCommunes = selectedCommunes.filter(cName => !list.includes(cName));
+    if (selectedCommunes.length === 0) {
+      selectedCommunes = ["TOTAL"];
+    }
+  }
+  activeFavoriteName = null;
+  syncCommuneCheckboxesUI();
+  updateCommuneSelectTriggerText();
+  updateCreateGroupingBoxVisibility();
+  updateFavoritesDropdownUI();
+  render();
+}
+
+function setCommuneOptions(communesGeo) {
+  const container = document.getElementById("commune-custom-options-container");
+  if (!container || !communesGeo || !communesGeo.features) return;
+  container.innerHTML = "";
+
+  const totalDiv = document.createElement("div");
+  totalDiv.className = "custom-option";
+  const totalCheckbox = document.createElement("input");
+  totalCheckbox.type = "checkbox";
+  totalCheckbox.value = "TOTAL";
+  totalCheckbox.id = "chk-commune-TOTAL";
+  totalCheckbox.checked = selectedCommunes.includes("TOTAL");
+  const totalLabel = document.createElement("label");
+  totalLabel.htmlFor = totalCheckbox.id;
+  totalLabel.textContent = "Toutes les communes (vue globale)";
+  totalDiv.appendChild(totalCheckbox);
+  totalDiv.appendChild(totalLabel);
+  container.appendChild(totalDiv);
+
+  totalCheckbox.addEventListener("change", () => {
+    if (totalCheckbox.checked) {
+      selectedCommunes = ["TOTAL"];
+      activeFavoriteName = null;
+    } else {
+      selectedCommunes = [];
+    }
+    syncCommuneCheckboxesUI();
+    updateCommuneSelectTriggerText();
+    updateCreateGroupingBoxVisibility();
+    updateFavoritesDropdownUI();
+    render();
+  });
+
+  const communesByDpt = {};
+  communesGeo.features.forEach(f => {
+    const isPaca = f.properties?.REGION_COD === "93" || f.properties?.REGION === "Provence-Alpes-Côte d'Azur";
+    if (!isPaca) return;
+    const name = f.properties?.DCOE_L_LIB || f.properties?.nom;
+    const insee = f.properties?.DCOE_C_COD || f.properties?.code_insee || "";
+    const dpt = f.properties?.DDEP_C_COD || insee.substring(0, 2);
+    if (name && dpt) {
+      if (!communesByDpt[dpt]) communesByDpt[dpt] = new Set();
+      communesByDpt[dpt].add(name);
+    }
+  });
+
+  COMMUNES_BY_DPT = communesByDpt;
+
+  const dptLabels = {
+    "04": "04 - Alpes-de-Haute-Provence",
+    "05": "05 - Hautes-Alpes",
+    "06": "06 - Alpes-Maritimes",
+    "13": "13 - Bouches-du-Rhône",
+    "83": "83 - Var",
+    "84": "84 - Vaucluse"
+  };
+
+  Object.keys(communesByDpt).sort().forEach(dpt => {
+    const list = Array.from(communesByDpt[dpt]).sort();
+    if (list.length === 0) return;
+
+    const dptHeader = document.createElement("div");
+    dptHeader.className = "dpt-header";
+
+    const dptCheckbox = document.createElement("input");
+    dptCheckbox.type = "checkbox";
+    dptCheckbox.id = `chk-com-dpt-${dpt}`;
+    dptCheckbox.checked = !selectedCommunes.includes("TOTAL") && list.every(item => selectedCommunes.includes(item));
+
+    const dptLabel = document.createElement("label");
+    dptLabel.htmlFor = dptCheckbox.id;
+    dptLabel.textContent = dptLabels[dpt] || `Département ${dpt}`;
+
+    dptHeader.appendChild(dptCheckbox);
+    dptHeader.appendChild(dptLabel);
+    container.appendChild(dptHeader);
+
+    dptCheckbox.addEventListener("change", (e) => {
+      e.stopPropagation();
+      handleCommuneDptSelectionChange(dpt, dptCheckbox.checked, communesByDpt);
+    });
+
+    list.forEach(communeName => {
+      const optionDiv = document.createElement("div");
+      optionDiv.className = "custom-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = communeName;
+      const checkboxId = `chk-com-${dpt}-${communeName.replace(/[^a-zA-Z0-9]/g, "-")}`;
+      checkbox.id = checkboxId;
+      checkbox.checked = selectedCommunes.includes(communeName);
+
+      const label = document.createElement("label");
+      label.htmlFor = checkboxId;
+      label.textContent = communeName;
+
+      optionDiv.appendChild(checkbox);
+      optionDiv.appendChild(label);
+      container.appendChild(optionDiv);
+
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          selectedCommunes = selectedCommunes.filter(c => c !== "TOTAL");
+          if (!selectedCommunes.includes(communeName)) {
+            selectedCommunes.push(communeName);
+          }
+        } else {
+          selectedCommunes = selectedCommunes.filter(c => c !== communeName);
+          if (selectedCommunes.length === 0) {
+            selectedCommunes = ["TOTAL"];
+          }
+        }
+        activeFavoriteName = null;
+        syncCommuneCheckboxesUI();
+        updateCommuneSelectTriggerText();
+        updateCreateGroupingBoxVisibility();
+        updateFavoritesDropdownUI();
+        render();
+      });
+    });
+  });
+
+  updateCommuneSelectTriggerText();
+  updateCreateGroupingBoxVisibility();
+}
+
+function updateCreateGroupingBoxVisibility() {
+  if (!createGroupingBox) return;
+  const specificCommunes = selectedCommunes.filter(c => c !== "TOTAL");
+  if (specificCommunes.length > 1) {
+    createGroupingBox.style.display = "block";
+  } else {
+    createGroupingBox.style.display = "none";
+  }
+}
+
+function syncCommuneCheckboxesUI() {
+  const container = document.getElementById("commune-custom-options-container");
+  if (!container) return;
+
+  const checkboxes = container.querySelectorAll("input[type='checkbox']:not([id^='chk-com-dpt-'])");
+  checkboxes.forEach(chk => {
+    if (chk.value === "TOTAL") {
+      chk.checked = selectedCommunes.includes("TOTAL");
+    } else {
+      chk.checked = selectedCommunes.includes(chk.value);
+    }
+  });
+
+  if (COMMUNES_BY_DPT) {
+    Object.keys(COMMUNES_BY_DPT).forEach(dpt => {
+      const dptChk = document.getElementById(`chk-com-dpt-${dpt}`);
+      if (dptChk) {
+        const list = Array.from(COMMUNES_BY_DPT[dpt] || []);
+        dptChk.checked = !selectedCommunes.includes("TOTAL") && list.length > 0 && list.every(item => selectedCommunes.includes(item));
+      }
+    });
+  }
+}
+
+function updateCommuneSelectTriggerText() {
+  const triggerSpan = document.querySelector("#commune-select-trigger span");
+  if (!triggerSpan) return;
+
+  if (selectedCommunes.includes("TOTAL") || selectedCommunes.length === 0) {
+    triggerSpan.textContent = "Toutes les communes (vue globale)";
+  } else if (selectedCommunes.length === 1) {
+    triggerSpan.textContent = selectedCommunes[0];
+  } else {
+    triggerSpan.textContent = `${selectedCommunes.length} communes sélectionnées`;
+  }
+}
+
+saveFavoriteBtn?.addEventListener("click", () => {
+  const name = favoriteNameInput.value.trim();
+  
+  if (!name) {
+    alert("Veuillez entrer un nom obligatoire pour enregistrer ce regroupement de communes.");
+    return;
+  }
+
+  const specificCommunes = selectedCommunes.filter(c => c !== "TOTAL");
+  if (specificCommunes.length <= 1) {
+    alert("Veuillez sélectionner au moins 2 communes pour créer un regroupement.");
+    return;
+  }
+
+  const favorites = loadFavoritesFromStorage();
+  const existingIndex = favorites.findIndex(f => f.name.toLowerCase() === name.toLowerCase());
+  
+  if (existingIndex !== -1) {
+    if (!confirm(`Un regroupement favori nommé "${name}" existe déjà. Voulez-vous le remplacer ?`)) {
+      return;
+    }
+    favorites[existingIndex].communes = [...specificCommunes];
+  } else {
+    favorites.push({
+      name: name,
+      communes: [...specificCommunes]
+    });
+  }
+
+  activeFavoriteName = name;
+  saveFavoritesToStorage(favorites);
+  updateFavoritesDropdownUI();
+  favoriteNameInput.value = "";
+  alert(`Le regroupement favori "${name}" (${specificCommunes.length} communes) a été enregistré avec succès !`);
+});
+
+favoritesSelect?.addEventListener("change", () => {
+  const selectedName = favoritesSelect.value;
+  if (modeSel && modeSel.value !== "commune") {
+    modeSel.value = "commune";
+  }
+
+  if (!selectedName) {
+    selectedCommunes = ["TOTAL"];
+    activeFavoriteName = null;
+    syncCommuneCheckboxesUI();
+    updateCommuneSelectTriggerText();
+    updateCreateGroupingBoxVisibility();
+    updateFavoritesDropdownUI();
+    render();
+    return;
+  }
+
+  const favorites = loadFavoritesFromStorage();
+  const foundFav = favorites.find(f => f.name === selectedName);
+
+  if (foundFav && Array.isArray(foundFav.communes)) {
+    selectedCommunes = [...foundFav.communes];
+    activeFavoriteName = foundFav.name;
+    syncCommuneCheckboxesUI();
+    updateCommuneSelectTriggerText();
+    updateCreateGroupingBoxVisibility();
+    updateFavoritesDropdownUI();
+    render();
+  }
+});
+
+deleteFavoriteBtn?.addEventListener("click", () => {
+  const targetName = activeFavoriteName || (favoritesSelect ? favoritesSelect.value : null);
+  if (targetName) {
+    deleteFavoriteByName(targetName);
+  }
+});
+
+document.getElementById("commune-select-trigger")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const options = document.getElementById("commune-custom-options-container");
+  const willShow = !options?.classList.contains("show");
+  closeAllDropdowns();
+  if (willShow) {
+    options?.classList.add("show");
+  }
+});

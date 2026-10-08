@@ -86,6 +86,29 @@
       <span class="sidebar-title">Filtres de recherche</span>
       <button id="sidebar-close" class="sidebar-close-btn" title="Masquer les filtres">✕</button>
     </div>
+
+    <!-- Section Favoris tout en haut (au-dessus de Difficulté signalée) -->
+    <div id="top-favorites-container" class="filter-group filter-large">
+      <label style="font-size: 11px; text-transform: uppercase; color: var(--blue-dark); font-weight: 700; display: flex; align-items: center; justify-content: space-between;">
+        <span>⭐ Regroupements favoris</span>
+        <button id="delete-favorite-btn" title="Supprimer le favori sélectionné" style="padding: 2px 8px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; display: none;">
+          🗑️ Supprimer
+        </button>
+      </label>
+      
+      <!-- Boutons pilules rapides (Affichés si 1 à 4 favoris) -->
+      <div id="favorites-pills-list" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;">
+        <!-- Injecté dynamiquement par JS -->
+      </div>
+
+      <!-- Menu déroulant pour accéder à l'ensemble des favoris (Affiché si > 4 favoris) -->
+      <div id="favorites-dropdown-wrapper" style="display: flex; gap: 6px; align-items: center; margin-top: 6px;">
+        <select id="favorites-select" style="flex: 1; padding: 6px 10px; font-size: 12.5px;">
+          <option value="">-- Choisir un regroupement favori --</option>
+        </select>
+      </div>
+    </div>
+
     <div class="filter-group filter-large">
       <label for="filter">Difficulté signalée</label>
       <div class="custom-select" id="custom-select-container">
@@ -149,6 +172,35 @@
         </div>
         <div class="custom-options" id="cpts-custom-options-container">
           <!-- Les cases à cocher seront injectées dynamiquement par JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtre des Communes (Uniquement en mode 'Par commune') -->
+    <div class="filter-group filter-large" id="commune-filter-container">
+      <label for="commune-select-trigger">Choix des Communes</label>
+
+      <!-- Menu déroulant multi-sélection des communes -->
+      <div class="custom-select" id="commune-select-container">
+        <div class="select-trigger" id="commune-select-trigger">
+          <span>Toutes les communes (vue globale)</span>
+          <span class="arrow">▼</span>
+        </div>
+        <div class="custom-options" id="commune-custom-options-container">
+          <!-- Les cases à cocher des communes sont injectées dynamiquement par JS -->
+        </div>
+      </div>
+
+      <!-- Bloc "Créer un regroupement de communes" (Affiché uniquement si plus d'1 commune sélectionnée) -->
+      <div id="create-grouping-box" class="favorites-box" style="display: none; margin-top: 8px;">
+        <label style="font-size: 11px; text-transform: uppercase; color: var(--blue-dark); font-weight: 700;">
+          ➕ Créer un regroupement de communes
+        </label>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+          <input type="text" id="favorite-name-input" placeholder="Nom du regroupement (obligatoire)" style="padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px;" />
+          <button id="save-favorite-btn" style="padding: 7px 12px; background: var(--blue-dark); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            💾 Enregistrer le regroupement
+          </button>
         </div>
       </div>
     </div>

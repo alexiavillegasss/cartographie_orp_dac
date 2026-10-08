@@ -1664,3 +1664,60 @@ body.sidebar-closed .dac-user-badge {
   color: white !important;
   transform: scale(1.03) !important;
 }
+
+
+/* Styling du bloc de gestion des favoris de communes */
+.favorites-box {
+  margin-top: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.favorites-box input[type="text"]:focus {
+  border-color: var(--blue-dark);
+  outline: none;
+}
+
+.favorites-box button:hover {
+  opacity: 0.9;
+}
+
+#top-favorites-container {
+  border-bottom: 1.5px dashed #cbd5e1;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.fav-pill {
+  padding: 5px 11px;
+  border-radius: 20px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: var(--blue-dark);
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.fav-pill:hover {
+  border-color: var(--blue-dark);
+  background: #f1f5f9;
+}
+
+.fav-pill.active {
+  background: var(--blue-dark);
+  color: white;
+  border-color: var(--blue-dark);
+  box-shadow: 0 2px 6px rgba(55, 102, 174, 0.35);
+}
