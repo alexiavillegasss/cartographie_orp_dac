@@ -1370,6 +1370,36 @@ body.sidebar-closed .dac-user-badge {
   box-shadow: 0 6px 20px rgba(221, 107, 32, 0.45);
 }
 
+.ruptures-toggle-btn {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  z-index: 10005 !important;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.ruptures-toggle-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+}
+.ruptures-toggle-btn.ruptures-hidden {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+}
+.ruptures-toggle-btn.ruptures-hidden:hover {
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.55);
+}
+
 /* Panneau de filtres latéral (#topbar) avec marge en haut pour laisser la place au badge et aux bulles */
 #topbar {
   position: fixed;

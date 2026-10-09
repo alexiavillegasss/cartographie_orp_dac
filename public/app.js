@@ -18,6 +18,8 @@ let selectedEPCIs = ["TOTAL"];
 let selectedCommunes = ["TOTAL"];
 let activeFavoriteName = null;
 let COMMUNES_BY_DPT = null;
+let areRupturesVisible = true;
+const rupturesToggleBtn = document.getElementById("ruptures-toggle-btn");
 
 const info = document.getElementById("info");
 const modeSel = document.getElementById("mode");
@@ -208,10 +210,6 @@ function updateFavoritesDropdownUI() {
           btn.innerHTML = `<span>⭐ ${fav.name}</span>`;
 
           btn.addEventListener("click", () => {
-            if (modeSel && modeSel.value !== "commune") {
-              modeSel.value = "commune";
-            }
-
             if (activeFavoriteName === fav.name) {
               selectedCommunes = ["TOTAL"];
               activeFavoriteName = null;
@@ -1396,6 +1394,13 @@ function render() {
 
   // Mode Commune, DAC, CPTS, EPCI (Clustering & Marqueurs individuels)
   if (mode === "commune" || mode === "dac" || mode === "cpts" || mode === "epci") {
+    const matchingRows = rowsTime.filter(r => matchesCategory(r, selectedCategories));
+    updateInfoBadge(matchingRows.length, timeLabel);
+
+    if (!areRupturesVisible) {
+      return;
+    }
+
     const markerClusterGroup = L.markerClusterGroup({
       showCoverageOnHover: false,
       spiderfyOnMaxZoom: true,
@@ -1412,9 +1417,6 @@ function render() {
         });
       }
     });
-
-    const matchingRows = rowsTime.filter(r => matchesCategory(r, selectedCategories));
-    updateInfoBadge(matchingRows.length, timeLabel);
 
     matchingRows.forEach(r => {
       const bubbleClass = "mini-marker-bubble";
@@ -1548,6 +1550,8 @@ function updateCommunesStyle() {
     const cp = feature.properties?.DCOE_C_COD || feature.properties?.code_insee || "";
     const name = feature.properties?.DCOE_L_LIB || feature.properties?.nom || "";
     const codeOrName = cp || name || "UNKNOWN";
+    const isCommuneSelected = !selectedCommunes.includes("TOTAL") &&
+      selectedCommunes.some(c => c === name || normalizeName(c) === normalizeName(name));
 
     let fillColor;
     let fillOpacity = 0.45;
@@ -1578,6 +1582,14 @@ function updateCommunesStyle() {
         strokeWidth = 0.5;
         dashArray = "2 2";
       }
+
+      if (isCommuneSelected) {
+        fillColor = colorForDAC(dacName);
+        fillOpacity = 0.85;
+        strokeColor = "#e53e3e";
+        strokeWidth = 3;
+        dashArray = "";
+      }
     } else if (mode === "cpts" && CPTS_MAP) {
       const cptsName = CPTS_MAP[cp] || CPTS_MAP[name] || CPTS_MAP[normalizeName(name)] || "CPTS inconnu";
       const isAllSelected = selectedCPTS.includes("TOTAL");
@@ -1600,6 +1612,14 @@ function updateCommunesStyle() {
         strokeColor = "#cbd5e0";
         strokeWidth = 0.5;
         dashArray = "2 2";
+      }
+
+      if (isCommuneSelected) {
+        fillColor = colorForCPTS(cptsName);
+        fillOpacity = 0.85;
+        strokeColor = "#e53e3e";
+        strokeWidth = 3;
+        dashArray = "";
       }
     } else if (mode === "epci") {
       const rawEpciName = feature.properties?.EPCI || "UNKNOWN";
@@ -1628,17 +1648,24 @@ function updateCommunesStyle() {
         strokeWidth = 0.5;
         dashArray = "2 2";
       }
+
+      if (isCommuneSelected) {
+        fillColor = colorForEPCI(epciName);
+        fillOpacity = 0.85;
+        strokeColor = "#e53e3e";
+        strokeWidth = 3;
+        dashArray = "";
+      }
     } else {
-      const isCommuneSelected = !selectedCommunes.includes("TOTAL") && selectedCommunes.some(c => c === name || normalizeName(c) === normalizeName(name));
       const isAllCommunes = selectedCommunes.includes("TOTAL");
 
       if (isAllCommunes) {
         fillColor = colorForCommune(codeOrName);
       } else if (isCommuneSelected) {
         fillColor = colorForCommune(codeOrName);
-        fillOpacity = 0.75;
+        fillOpacity = 0.85;
         strokeColor = "#e53e3e";
-        strokeWidth = 2.5;
+        strokeWidth = 3;
         dashArray = "";
       } else {
         fillColor = "transparent";
@@ -1812,101 +1839,29 @@ const COMMUNES_GEO_PROMISE = Promise.all([
       });
 
       layer.on('click', (e) => {
-        const mode = modeSel.value;
-        if (mode !== "cpts" && mode !== "epci" && mode !== "dac") return;
+        if (!name) return;
 
-        let territoryName = "";
-
-        if (mode === "cpts" && CPTS_MAP) {
-          territoryName = CPTS_MAP[cp] || CPTS_MAP[name] || CPTS_MAP[normalizeName(name)] || "";
-        } else if (mode === "epci") {
-          territoryName = getOfficialEPCIName(feature.properties?.EPCI || "");
-        } else if (mode === "dac" && DAC_MAP) {
-          territoryName = DAC_MAP[cp] || DAC_MAP[name] || DAC_MAP[normalizeName(name)] || "";
-        }
-
-        if (!territoryName || territoryName === "Non renseigné" || territoryName === "CPTS inconnu" || territoryName === "DAC inconnu" || territoryName === "EPCI inconnu") {
-          return;
-        }
-
-        const activeRows = filterRowsByParcours(filterRowsByTime(DATA ? DATA.rows : []));
-        const catFilteredRows = activeRows.filter(r => matchesCategory(r, selectedCategories));
-
-        let territoryRows = [];
-        if (mode === "cpts" && CPTS_MAP) {
-          territoryRows = catFilteredRows.filter(r => {
-            const cName = CPTS_MAP[r.label] || CPTS_MAP[normalizeName(r.label)] || CPTS_MAP[r.cp];
-            return cName === territoryName;
-          });
-        } else if (mode === "epci") {
-          territoryRows = catFilteredRows.filter(r => {
-            const eName = getEPCINameForRow(r);
-            return eName === territoryName || normalizeName(eName) === normalizeName(territoryName);
-          });
-        } else if (mode === "dac" && DAC_MAP) {
-          territoryRows = catFilteredRows.filter(r => {
-            const dName = DAC_MAP[r.label] || DAC_MAP[normalizeName(r.label)] || DAC_MAP[r.cp];
-            return dName === territoryName;
-          });
-        }
-
-        const territoryTotal = territoryRows.length;
-
-        if (activeBoundsRectangle) {
-          map.removeLayer(activeBoundsRectangle);
-          activeBoundsRectangle = null;
-        }
-
-        if (COMMUNES_GEO && COMMUNES_GEO.features) {
-          const pacaTerritoryFeatures = COMMUNES_GEO.features.filter(f => {
-            const isPaca = f.properties?.REGION_COD === "93" || f.properties?.REGION === "Provence-Alpes-Côte d'Azur";
-            if (!isPaca) return false;
-
-            const fCp = f.properties?.DCOE_C_COD || f.properties?.code_insee || "";
-            const fName = f.properties?.DCOE_L_LIB || f.properties?.nom || "";
-
-            if (mode === "cpts" && CPTS_MAP) {
-              return (CPTS_MAP[fCp] || CPTS_MAP[fName] || CPTS_MAP[normalizeName(fName)]) === territoryName;
-            } else if (mode === "epci") {
-              const fEpci = getOfficialEPCIName(f.properties?.EPCI || "");
-              return fEpci === territoryName || normalizeName(fEpci) === normalizeName(territoryName);
-            } else if (mode === "dac" && DAC_MAP) {
-              return (DAC_MAP[fCp] || DAC_MAP[fName] || DAC_MAP[normalizeName(fName)]) === territoryName;
+        // Basculer l'état de sélection de la commune cliquée
+        if (selectedCommunes.includes("TOTAL")) {
+          selectedCommunes = [name];
+        } else {
+          if (selectedCommunes.includes(name)) {
+            selectedCommunes = selectedCommunes.filter(c => c !== name);
+            if (selectedCommunes.length === 0) {
+              selectedCommunes = ["TOTAL"];
             }
-            return false;
-          });
-
-          if (pacaTerritoryFeatures.length > 0) {
-            const tempLayer = L.geoJSON({ type: "FeatureCollection", features: pacaTerritoryFeatures });
-            const bounds = tempLayer.getBounds();
-            if (bounds.isValid()) {
-              activeBoundsRectangle = L.rectangle(bounds, {
-                color: "#2b6cb0",
-                weight: 2,
-                dashArray: "6, 6",
-                fill: false,
-                interactive: false
-              }).addTo(map);
-            }
+          } else {
+            selectedCommunes.push(name);
           }
         }
 
-        const popupContent = `
-          <div style="font-family: 'Outfit', sans-serif; min-width: 210px; padding: 2px;">
-            <b style="color: var(--blue-dark); font-size: 15px; display: block; margin-bottom: 4px;">${territoryName}</b>
-            <div style="font-size: 13px; color: #4a5568; margin-bottom: 6px;">Commune cliquée : <b>${name}</b> (${cp})</div>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 8px 0;">
-            <div style="font-size: 13px; font-weight: 600; color: #2b6cb0; display: flex; align-items: center; gap: 6px;">
-              <span>📊</span>
-              <span><b>${territoryTotal}</b> rupture${territoryTotal > 1 ? 's' : ''} enregistrée${territoryTotal > 1 ? 's' : ''} sur ce territoire</span>
-            </div>
-          </div>
-        `;
-
-        L.popup()
-          .setLatLng(e.latlng)
-          .setContent(popupContent)
-          .openOn(map);
+        activeFavoriteName = null;
+        syncCommuneCheckboxesUI();
+        updateCommuneSelectTriggerText();
+        updateCreateGroupingBoxVisibility();
+        updateFavoritesDropdownUI();
+        updateCommunesStyle();
+        render();
       });
     }
   }).addTo(communesLayer);
@@ -2791,6 +2746,27 @@ function initDataImportModal() {
     });
   }
 
+  if (rupturesToggleBtn) {
+    rupturesToggleBtn.addEventListener("click", () => {
+      areRupturesVisible = !areRupturesVisible;
+      const icon = document.getElementById("ruptures-toggle-icon");
+      if (areRupturesVisible) {
+        rupturesToggleBtn.classList.remove("ruptures-hidden");
+        rupturesToggleBtn.title = "Masquer les ruptures de parcours";
+        if (icon) {
+          icon.innerHTML = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+        }
+      } else {
+        rupturesToggleBtn.classList.add("ruptures-hidden");
+        rupturesToggleBtn.title = "Afficher les ruptures de parcours";
+        if (icon) {
+          icon.innerHTML = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`;
+        }
+      }
+      render();
+    });
+  }
+
   modalCloseBtn?.addEventListener("click", () => {
     modalOverlay.classList.add("hidden");
   });
@@ -3175,9 +3151,6 @@ saveFavoriteBtn?.addEventListener("click", () => {
 
 favoritesSelect?.addEventListener("change", () => {
   const selectedName = favoritesSelect.value;
-  if (modeSel && modeSel.value !== "commune") {
-    modeSel.value = "commune";
-  }
 
   if (!selectedName) {
     selectedCommunes = ["TOTAL"];
