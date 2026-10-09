@@ -46,46 +46,104 @@ const csvStatus = document.getElementById("csvStatus");
 
 
 
+// --------------------------------------------------------------------------
+// Initialisation Firebase Firestore (Centralisation multi-DAC)
+// --------------------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyDwmWYzZMrnb71z3mRabj_NucrQsu4_m3Q",
+  authDomain: "orp-cartographie.firebaseapp.com",
+  projectId: "orp-cartographie",
+  storageBucket: "orp-cartographie.firebasestorage.app",
+  messagingSenderId: "967427486875",
+  appId: "1:967427486875:web:2e9f96b888496a3d8b423e"
+};
+
+let db = null;
+try {
+  if (typeof firebase !== "undefined") {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore();
+    console.log("🔥 Firebase Firestore initialisé avec succès !");
+  }
+} catch (err) {
+  console.warn("⚠️ Impossible d'initialiser Firebase, mode fallback localStorage activé :", err);
+}
+
 let importedFiles = []; // [{ id, dacName, fileName, importDate, rowCount, rows }]
 
-function loadImportedFilesFromStorage() {
+async function loadImportedFilesFromStorage() {
+  if (db) {
+    try {
+      console.log("🔥 Chargement des données depuis Firebase Firestore...");
+      const snapshot = await db.collection("imported_files").get();
+      importedFiles = snapshot.docs.map(doc => doc.data());
+      console.log(`✅ ${importedFiles.length} fichier(s) récupérés depuis Firebase.`);
+    } catch (e) {
+      console.error("❌ Erreur de chargement Firebase Firestore, repli sur localStorage :", e);
+      loadFromLocalStorageFallback();
+    }
+  } else {
+    loadFromLocalStorageFallback();
+  }
+
+  // Nettoyer et réparer automatiquement les accents sur tous les documents en mémoire
+  importedFiles.forEach(doc => {
+    if (doc.rows && Array.isArray(doc.rows)) {
+      doc.rows = doc.rows.map(r => {
+        const rawOrigins = Array.isArray(r.origins) ? r.origins : (r.origins ? [r.origins] : []);
+        const cleanOrigins = rawOrigins.map(o => normalizeToStandardDifficulty(cleanAndRepairAccents(o))).filter(Boolean);
+        return {
+          ...r,
+          label: cleanAndRepairAccents(r.label),
+          detail: cleanAndRepairAccents(r.detail),
+          sourceFile: cleanAndRepairAccents(r.sourceFile),
+          sourceDac: cleanAndRepairAccents(r.sourceDac),
+          origins: cleanOrigins.length > 0 ? cleanOrigins : [STANDARD_DIFFICULTIES[0]]
+        };
+      });
+    }
+  });
+}
+
+function loadFromLocalStorageFallback() {
   try {
     const raw = localStorage.getItem("orp_imported_files");
-    if (raw) {
-      importedFiles = JSON.parse(raw);
-      // Nettoyer et réparer automatiquement les accents sur tous les documents en mémoire
-      importedFiles.forEach(doc => {
-        if (doc.rows && Array.isArray(doc.rows)) {
-          doc.rows = doc.rows.map(r => {
-            const rawOrigins = Array.isArray(r.origins) ? r.origins : (r.origins ? [r.origins] : []);
-            const cleanOrigins = rawOrigins.map(o => normalizeToStandardDifficulty(cleanAndRepairAccents(o))).filter(Boolean);
-            return {
-              ...r,
-              label: cleanAndRepairAccents(r.label),
-              detail: cleanAndRepairAccents(r.detail),
-              sourceFile: cleanAndRepairAccents(r.sourceFile),
-              sourceDac: cleanAndRepairAccents(r.sourceDac),
-              origins: cleanOrigins.length > 0 ? cleanOrigins : [STANDARD_DIFFICULTIES[0]]
-            };
-          });
-        }
-      });
-    } else {
-      importedFiles = [];
-    }
+    importedFiles = raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.error("Erreur de chargement localStorage orp_imported_files:", e);
     importedFiles = [];
   }
 }
 
-function saveImportedFilesToStorage() {
+async function saveImportedFilesToStorage() {
+  // Sauvegarde dans localStorage en secours
   try {
     localStorage.setItem("orp_imported_files", JSON.stringify(importedFiles));
-  } catch (e) {
-    console.error("Erreur de sauvegarde localStorage orp_imported_files:", e);
+  } catch (e) {}
+
+  if (db) {
+    try {
+      console.log("🔥 Envoi des données vers Firebase Firestore...");
+      const batch = db.batch();
+      
+      const snapshot = await db.collection("imported_files").get();
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      
+      importedFiles.forEach(fileDoc => {
+        const docId = String(fileDoc.id || Date.now());
+        const ref = db.collection("imported_files").doc(docId);
+        batch.set(ref, fileDoc);
+      });
+      
+      await batch.commit();
+      console.log("✅ Données enregistrées avec succès sur Firebase Firestore !");
+    } catch (e) {
+      console.error("❌ Erreur de sauvegarde Firebase Firestore :", e);
+    }
   }
 }
+
 
 const FAVORITES_STORAGE_KEY = "orp_communes_favorites";
 
@@ -1624,8 +1682,8 @@ function normalizeGeometry(geometry) {
 // -------------------------
 // Traitement des Données Importées
 // -------------------------
-function rebuildAllDataRows() {
-  loadImportedFilesFromStorage();
+async function rebuildAllDataRows() {
+  await loadImportedFilesFromStorage();
   const manualRows = getManualRows();
 
   DATA = {
@@ -1661,7 +1719,7 @@ const COMMUNES_GEO_PROMISE = Promise.all([
   fetch("./EPCI_2025.geojson?v=20260902_35").then(r => r.json()),
   fetch("./dac_communes.json?v=20260902_35").then(r => r.json()),
   fetch("./cpts_communes.json?v=20260902_35").then(r => r.json())
-]).then(([communesGeo, epciGeo, dacMap, cptsData]) => {
+]).then(async ([communesGeo, epciGeo, dacMap, cptsData]) => {
   COMMUNES_GEO = communesGeo;
   EPCI_GEO = epciGeo;
   DAC_MAP = dacMap;
@@ -1891,7 +1949,7 @@ const COMMUNES_GEO_PROMISE = Promise.all([
   if (DATA) {
     DATA.rows = attachEPCIToRows(DATA.rows);
   }
-  rebuildAllDataRows();
+  await rebuildAllDataRows();
 });
 
 // -------------------------
@@ -2628,8 +2686,8 @@ function initNewsModal() {
 
   if (!newsModal) return;
 
-  const openNews = () => {
-    renderNewsFeed();
+  const openNews = async () => {
+    await renderNewsFeed();
     newsModal.classList.remove("hidden");
   };
 
@@ -2643,9 +2701,9 @@ function initNewsModal() {
     if (e.target === newsModal) newsModal.classList.add("hidden");
   });
 
-  function renderNewsFeed() {
+  async function renderNewsFeed() {
     if (!newsContainer) return;
-    loadImportedFilesFromStorage();
+    await loadImportedFilesFromStorage();
 
     if (importedFiles.length === 0) {
       newsContainer.innerHTML = `<div style="text-align: center; color: #718096; padding: 20px; font-size: 13px;">Aucune actualité d'importation pour le moment.</div>`;
@@ -2706,7 +2764,7 @@ function initDataImportModal() {
 
   if (!modalOverlay) return;
 
-  const openModalHandler = () => {
+  const openModalHandler = async () => {
     updateDACUserBadge();
     if (fileInput) fileInput.value = "";
     if (statusMsg) {
@@ -2714,7 +2772,7 @@ function initDataImportModal() {
       statusMsg.className = "status-msg";
     }
     modalOverlay.classList.remove("hidden");
-    renderImportedDocumentsList();
+    await renderImportedDocumentsList();
   };
 
   if (modalOpenBtn) modalOpenBtn.addEventListener("click", openModalHandler);
@@ -2732,10 +2790,6 @@ function initDataImportModal() {
       topbar.classList.toggle("hidden");
     });
   }
-
-
-
-
 
   modalCloseBtn?.addEventListener("click", () => {
     modalOverlay.classList.add("hidden");
@@ -2796,18 +2850,8 @@ function initDataImportModal() {
         rows: validRows
       };
 
-      loadImportedFilesFromStorage();
-
-      const confirmModal = document.getElementById("import-confirm-modal");
-      const replaceBtn = document.getElementById("confirm-replace-btn");
-      const appendBtn = document.getElementById("confirm-append-btn");
-      const cancelBtn = document.getElementById("confirm-cancel-btn");
-
-
-
-      // Remplacement automatique du précédent fichier du DAC connecté sans modale
       const currentDacNorm = String(currentDac || "").trim().toLowerCase();
-      loadImportedFilesFromStorage();
+      await loadImportedFilesFromStorage();
 
       // Remplacer le précédent fichier de ce DAC tout en conservant les fichiers des autres DAC
       importedFiles = importedFiles.filter(d => 
@@ -2815,12 +2859,12 @@ function initDataImportModal() {
       );
       importedFiles.push(docEntry);
 
-      saveImportedFilesToStorage();
+      await saveImportedFilesToStorage();
 
       fileInput.value = "";
       showImportStatus(`✅ ${validRows.length} rupture(s) importée(s) avec succès sur la carte !`, "success");
-      renderImportedDocumentsList();
-      rebuildAllDataRows();
+      await renderImportedDocumentsList();
+      await rebuildAllDataRows();
     } catch (err) {
       console.error("Erreur d'importation CSV:", err);
       showImportStatus("Erreur lors de l'importation : " + (err.message || err), "error");
@@ -2833,9 +2877,9 @@ function initDataImportModal() {
     statusMsg.className = "status-msg " + (type || "");
   }
 
-  function renderImportedDocumentsList() {
+  async function renderImportedDocumentsList() {
     if (!docListContainer) return;
-    loadImportedFilesFromStorage();
+    await loadImportedFilesFromStorage();
     const currentDac = getCurrentDAC();
 
     // Chaque DAC ne voit et ne gère QUE les fichiers qu'il a lui-même importés
@@ -2869,24 +2913,24 @@ function initDataImportModal() {
     docListContainer.innerHTML = html;
 
     // Écouteur de clics pour la suppression immédiate de documents
-    docListContainer.onclick = (e) => {
+    docListContainer.onclick = async (e) => {
       const deleteBtn = e.target.closest(".doc-delete-btn");
       if (deleteBtn) {
         const docId = deleteBtn.getAttribute("data-doc-id");
-        deleteImportedDocument(docId);
+        await deleteImportedDocument(docId);
       }
     };
   }
 
-  function deleteImportedDocument(docId) {
-    loadImportedFilesFromStorage();
+  async function deleteImportedDocument(docId) {
+    await loadImportedFilesFromStorage();
     const docToDelete = importedFiles.find(d => d.id === docId);
     if (!docToDelete) return;
 
     importedFiles = importedFiles.filter(d => d.id !== docId);
-    saveImportedFilesToStorage();
-    renderImportedDocumentsList();
-    rebuildAllDataRows();
+    await saveImportedFilesToStorage();
+    await renderImportedDocumentsList();
+    await rebuildAllDataRows();
   }
 }
 
