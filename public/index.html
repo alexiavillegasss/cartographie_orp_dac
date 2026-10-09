@@ -85,6 +85,13 @@
         <polyline points="9 15 12 12 15 15"></polyline>
       </svg>
     </button>
+
+    <button id="ruptures-toggle-btn" class="ruptures-toggle-btn" title="Masquer les ruptures de parcours">
+      <svg id="ruptures-toggle-icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+    </button>
   </div>
 
   <div id="topbar" class="session-hidden">
@@ -112,6 +119,19 @@
         <select id="favorites-select" style="flex: 1; padding: 6px 10px; font-size: 12.5px;">
           <option value="">-- Choisir un regroupement favori --</option>
         </select>
+      </div>
+
+      <!-- Bloc "Créer un regroupement de communes" (Affiché si plus d'1 commune sélectionnée quel que soit le mode) -->
+      <div id="create-grouping-box" class="favorites-box" style="display: none; margin-top: 8px;">
+        <label style="font-size: 11px; text-transform: uppercase; color: var(--blue-dark); font-weight: 700;">
+          ➕ Créer un regroupement favori
+        </label>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+          <input type="text" id="favorite-name-input" placeholder="Nom du regroupement (ex: Mes 3 communes)" style="padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px;" />
+          <button id="save-favorite-btn" style="padding: 7px 12px; background: var(--blue-dark); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            💾 Enregistrer le regroupement
+          </button>
+        </div>
       </div>
     </div>
 
@@ -194,19 +214,6 @@
         </div>
         <div class="custom-options" id="commune-custom-options-container">
           <!-- Les cases à cocher des communes sont injectées dynamiquement par JS -->
-        </div>
-      </div>
-
-      <!-- Bloc "Créer un regroupement de communes" (Affiché uniquement si plus d'1 commune sélectionnée) -->
-      <div id="create-grouping-box" class="favorites-box" style="display: none; margin-top: 8px;">
-        <label style="font-size: 11px; text-transform: uppercase; color: var(--blue-dark); font-weight: 700;">
-          ➕ Créer un regroupement de communes
-        </label>
-        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-          <input type="text" id="favorite-name-input" placeholder="Nom du regroupement (obligatoire)" style="padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px;" />
-          <button id="save-favorite-btn" style="padding: 7px 12px; background: var(--blue-dark); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
-            💾 Enregistrer le regroupement
-          </button>
         </div>
       </div>
     </div>
@@ -330,7 +337,7 @@
     </div>
   </div>
 
-  <script src="./app.js?v=20260902_35"></script>
+  <script src="./app.js?v=20261009_01"></script>
 
   <!-- Modal Actualités Mises à Jour DAC -->
   <div id="news-modal" class="modal-overlay hidden" style="z-index: 10002;">
