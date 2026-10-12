@@ -80,7 +80,10 @@ async function loadImportedFilesFromStorage() {
     try {
       console.log("🔥 Chargement des données depuis Firebase Firestore...");
       const snapshot = await db.collection("imported_files").get();
-      importedFiles = snapshot.docs.map(doc => doc.data());
+      // On filtre pour exclure les documents de favoris partagés
+      importedFiles = snapshot.docs
+        .filter(doc => !doc.id.startsWith("favorites_"))
+        .map(doc => doc.data());
       console.log(`✅ ${importedFiles.length} fichier(s) récupérés depuis Firebase.`);
     } catch (e) {
       console.error("❌ Erreur de chargement Firebase Firestore, repli sur localStorage :", e);
@@ -130,7 +133,10 @@ async function saveImportedFilesToStorage() {
       const batch = db.batch();
       
       const snapshot = await db.collection("imported_files").get();
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      // Ne supprimer que les fichiers CSV importés, JAMAIS les favoris
+      snapshot.docs
+        .filter(doc => !doc.id.startsWith("favorites_"))
+        .forEach(doc => batch.delete(doc.ref));
       
       importedFiles.forEach(fileDoc => {
         const docId = String(fileDoc.id || Date.now());
@@ -148,32 +154,143 @@ async function saveImportedFilesToStorage() {
 
 
 const FAVORITES_STORAGE_KEY = "orp_communes_favorites";
+let currentDacFavorites = [];
+let unsubscribeFavoritesListener = null;
 
-function loadFavoritesFromStorage() {
-  try {
-    const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.error("Erreur lors du chargement des favoris :", e);
-    return [];
-  }
+function getFavoritesFallbackKey(dac = getCurrentDAC()) {
+  const safeDac = String(dac || "default").trim().replace(/\s+/g, "_").toLowerCase();
+  return `orp_favorites_${safeDac}`;
 }
 
-function saveFavoritesToStorage(favorites) {
+function getFavoritesDocId(dac = getCurrentDAC()) {
+  const safeDac = String(dac || "default").trim().replace(/\s+/g, "_").toLowerCase();
+  return `favorites_${safeDac}`;
+}
+
+function loadFavoritesFallback(dac = getCurrentDAC()) {
   try {
+    const key = getFavoritesFallbackKey(dac);
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+
+    // Rétrocompatibilité : si l'ancien localStorage global contient des favoris
+    const legacy = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error("Erreur lecture fallback favoris :", e);
+  }
+  return [];
+}
+
+function saveFavoritesFallback(dac = getCurrentDAC(), favorites = []) {
+  try {
+    const key = getFavoritesFallbackKey(dac);
+    localStorage.setItem(key, JSON.stringify(favorites));
+    // Conserver également dans la clé globale pour garantir qu'aucun favori n'est perdu
     localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
   } catch (e) {
-    console.error("Erreur lors de la sauvegarde des favoris :", e);
+    console.error("Erreur sauvegarde fallback favoris :", e);
   }
 }
 
-function deleteFavoriteByName(favName) {
+// Initialisation synchrone immédiate : les favoris sont affichés SANS AUCUNE ATTENTE
+currentDacFavorites = loadFavoritesFallback();
+
+function initFavoritesSync() {
+  const currentDac = getCurrentDAC();
+  const docId = getFavoritesDocId(currentDac);
+
+  // 1. Charger immédiatement le cache local
+  currentDacFavorites = loadFavoritesFallback(currentDac);
+  updateFavoritesDropdownUI();
+
+  // 2. Synchronisation Firebase Firestore en temps réel
+  if (db) {
+    if (unsubscribeFavoritesListener) {
+      unsubscribeFavoritesListener();
+      unsubscribeFavoritesListener = null;
+    }
+
+    try {
+      console.log(`🔥 Synchronisation des favoris Firebase pour : ${currentDac} (${docId})`);
+      const docRef = db.collection("imported_files").doc(docId);
+
+      unsubscribeFavoritesListener = docRef.onSnapshot(async (docSnap) => {
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          if (Array.isArray(data.favorites)) {
+            currentDacFavorites = data.favorites;
+            saveFavoritesFallback(currentDac, currentDacFavorites);
+            console.log(`⭐ ${currentDacFavorites.length} favori(s) synchronisé(s) depuis Firebase pour ${currentDac}`);
+          }
+        } else {
+          // Document non encore existant sur Firebase : si l'utilisateur a des favoris existants, les téléverser
+          const localFavorites = loadFavoritesFallback(currentDac);
+          if (localFavorites && localFavorites.length > 0) {
+            currentDacFavorites = localFavorites;
+            console.log(`🚀 Téléversement de ${currentDacFavorites.length} favori(s) existant(s) vers Firebase pour ${currentDac}...`);
+            await saveFavoritesToStorage(currentDacFavorites);
+          }
+        }
+
+        // Si le favori sélectionné n'existe plus, le réinitialiser
+        if (activeFavoriteName && !currentDacFavorites.some(f => f.name === activeFavoriteName)) {
+          activeFavoriteName = null;
+        }
+
+        updateFavoritesDropdownUI();
+      }, (err) => {
+        console.warn("⚠️ Erreur lors de l'écoute Firestore des favoris :", err);
+      });
+    } catch (err) {
+      console.warn("⚠️ Impossible d'initialiser l'écoute Firestore des favoris :", err);
+    }
+  }
+}
+
+function loadFavoritesFromStorage() {
+  if (!currentDacFavorites || currentDacFavorites.length === 0) {
+    currentDacFavorites = loadFavoritesFallback(getCurrentDAC());
+  }
+  return currentDacFavorites || [];
+}
+
+async function saveFavoritesToStorage(favorites) {
+  currentDacFavorites = [...favorites];
+  const currentDac = getCurrentDAC();
+  saveFavoritesFallback(currentDac, currentDacFavorites);
+
+  if (db) {
+    try {
+      const docId = getFavoritesDocId(currentDac);
+      console.log(`🔥 Sauvegarde des favoris sur Firebase pour ${currentDac}...`);
+      await db.collection("imported_files").doc(docId).set({
+        type: "favorites",
+        dacName: currentDac,
+        favorites: currentDacFavorites,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      console.log(`✅ Favoris enregistrés avec succès sur Firebase pour ${currentDac} !`);
+    } catch (e) {
+      console.error("❌ Erreur de sauvegarde Firebase des favoris :", e);
+    }
+  }
+}
+
+async function deleteFavoriteByName(favName) {
   if (!favName) return;
 
-  if (confirm(`Voulez-vous vraiment supprimer le regroupement favori "${favName}" ?`)) {
+  const currentDac = getCurrentDAC();
+  if (confirm(`Voulez-vous vraiment supprimer le regroupement favori "${favName}" pour ${currentDac} ?`)) {
     let favorites = loadFavoritesFromStorage();
     favorites = favorites.filter(f => f.name !== favName);
-    saveFavoritesToStorage(favorites);
+    await saveFavoritesToStorage(favorites);
     
     if (activeFavoriteName === favName) {
       selectedCommunes = ["TOTAL"];
@@ -189,8 +306,14 @@ function deleteFavoriteByName(favName) {
 }
 
 function updateFavoritesDropdownUI() {
+  const currentDac = getCurrentDAC();
   const favorites = loadFavoritesFromStorage();
   const dropdownWrapper = document.getElementById("favorites-dropdown-wrapper");
+  const dacLabelSpan = document.getElementById("favorites-dac-label");
+
+  if (dacLabelSpan) {
+    dacLabelSpan.textContent = `(${currentDac})`;
+  }
 
   // Si <= 4 favoris : on affiche uniquement les pilules (jusqu'à 4) et on masque le menu déroulant
   // Si > 4 favoris : les pilules disparaissent et sont réunies dans le menu déroulant
@@ -200,13 +323,13 @@ function updateFavoritesDropdownUI() {
       favoritesPillsList.style.display = "flex";
       favoritesPillsList.innerHTML = "";
       if (favorites.length === 0) {
-        favoritesPillsList.innerHTML = `<span style="font-size: 11.5px; color: #94a3b8; font-style: italic;">Aucun regroupement favori enregistré</span>`;
+        favoritesPillsList.innerHTML = `<span style="font-size: 11.5px; color: #94a3b8; font-style: italic;">Aucun regroupement favori enregistré pour ${currentDac}</span>`;
       } else {
         favorites.forEach(fav => {
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "fav-pill" + (activeFavoriteName === fav.name ? " active" : "");
-          btn.title = `${fav.name} (${fav.communes.length} commune${fav.communes.length > 1 ? 's' : ''})`;
+          btn.title = `${fav.name} (${fav.communes.length} commune${fav.communes.length > 1 ? 's' : ''}) - ${currentDac}`;
           btn.innerHTML = `<span>⭐ ${fav.name}</span>`;
 
           btn.addEventListener("click", () => {
@@ -2605,6 +2728,7 @@ function initLogin() {
       localStorage.setItem("orp_current_dac", selectedDac);
       errorMsg.textContent = "";
       checkSession();
+      initFavoritesSync();
       rebuildAllDataRows();
     } else {
       errorMsg.textContent = "Mot de passe incorrect.";
@@ -2617,6 +2741,13 @@ function initLogin() {
   if (logoutBtn) {
     logoutBtn.addEventListener("click", () => {
       localStorage.removeItem("orp_authenticated");
+      if (unsubscribeFavoritesListener) {
+        unsubscribeFavoritesListener();
+        unsubscribeFavoritesListener = null;
+      }
+      activeFavoriteName = null;
+      currentDacFavorites = loadFavoritesFallback();
+      updateFavoritesDropdownUI();
       loginScreen.classList.remove("hidden");
     });
   }
@@ -2624,6 +2755,13 @@ function initLogin() {
   if (dacLogoutBtn) {
     dacLogoutBtn.addEventListener("click", () => {
       localStorage.removeItem("orp_authenticated");
+      if (unsubscribeFavoritesListener) {
+        unsubscribeFavoritesListener();
+        unsubscribeFavoritesListener = null;
+      }
+      activeFavoriteName = null;
+      currentDacFavorites = loadFavoritesFallback();
+      updateFavoritesDropdownUI();
       loginScreen.classList.remove("hidden");
     });
   }
@@ -2690,6 +2828,7 @@ function initNewsModal() {
 function runInit() {
   checkSession();
   initLogin();
+  initFavoritesSync();
   initDataImportModal();
   initNewsModal();
 }
@@ -3113,8 +3252,9 @@ function updateCommuneSelectTriggerText() {
   }
 }
 
-saveFavoriteBtn?.addEventListener("click", () => {
+saveFavoriteBtn?.addEventListener("click", async () => {
   const name = favoriteNameInput.value.trim();
+  const currentDac = getCurrentDAC();
   
   if (!name) {
     alert("Veuillez entrer un nom obligatoire pour enregistrer ce regroupement de communes.");
@@ -3131,7 +3271,7 @@ saveFavoriteBtn?.addEventListener("click", () => {
   const existingIndex = favorites.findIndex(f => f.name.toLowerCase() === name.toLowerCase());
   
   if (existingIndex !== -1) {
-    if (!confirm(`Un regroupement favori nommé "${name}" existe déjà. Voulez-vous le remplacer ?`)) {
+    if (!confirm(`Un regroupement favori nommé "${name}" existe déjà pour ${currentDac}. Voulez-vous le remplacer ?`)) {
       return;
     }
     favorites[existingIndex].communes = [...specificCommunes];
@@ -3143,10 +3283,10 @@ saveFavoriteBtn?.addEventListener("click", () => {
   }
 
   activeFavoriteName = name;
-  saveFavoritesToStorage(favorites);
+  await saveFavoritesToStorage(favorites);
   updateFavoritesDropdownUI();
   favoriteNameInput.value = "";
-  alert(`Le regroupement favori "${name}" (${specificCommunes.length} communes) a été enregistré avec succès !`);
+  alert(`Le regroupement favori "${name}" (${specificCommunes.length} communes) a été enregistré avec succès pour ${currentDac} !`);
 });
 
 favoritesSelect?.addEventListener("change", () => {
