@@ -1375,12 +1375,79 @@ function filterRowsByDAC(rows) {
   });
 }
 
+let DUPLICATE_COMMUNE_NAMES = new Set();
+
+function initDuplicateCommuneNames(communesGeo) {
+  if (!communesGeo || !communesGeo.features) return;
+  const nameCounts = {};
+  communesGeo.features.forEach(f => {
+    const isPaca = f.properties?.REGION_COD === "93" || f.properties?.REGION === "Provence-Alpes-Côte d'Azur";
+    if (!isPaca) return;
+    const name = f.properties?.DCOE_L_LIB || f.properties?.nom;
+    if (name) {
+      nameCounts[name] = (nameCounts[name] || 0) + 1;
+    }
+  });
+  DUPLICATE_COMMUNE_NAMES = new Set(
+    Object.keys(nameCounts).filter(name => nameCounts[name] > 1)
+  );
+}
+
+function getCommuneIdentifier(featureOrProperties) {
+  const props = featureOrProperties.properties || featureOrProperties;
+  const name = props.DCOE_L_LIB || props.nom || "";
+  const insee = props.DCOE_C_COD || props.code_insee || "";
+  const dpt = props.DDEP_C_COD || (insee ? insee.substring(0, 2) : "");
+
+  // Si plusieurs communes portent le même nom en PACA, on ajoute le département pour les différencier de manière unique
+  if (DUPLICATE_COMMUNE_NAMES.has(name) && dpt) {
+    return `${name} (${dpt})`;
+  }
+  return name;
+}
+
+function isCommuneSelectedMatch(selectedItem, feature) {
+  const commId = getCommuneIdentifier(feature);
+  if (selectedItem === commId) return true;
+
+  // Rétrocompatibilité avec les favoris existants enregistrés avec le nom brut
+  const name = feature.properties?.DCOE_L_LIB || feature.properties?.nom || "";
+  if (selectedItem === name || normalizeName(selectedItem) === normalizeName(name)) {
+    if (!DUPLICATE_COMMUNE_NAMES.has(name)) return true;
+    const dpt = feature.properties?.DDEP_C_COD || "";
+    const currentDac = getCurrentDAC();
+    if (currentDac.includes("Var") && dpt === "83") return true;
+    if (currentDac.includes("Vaucluse") && dpt === "84") return true;
+    if (currentDac.includes("Hautes-Alpes") && dpt === "05") return true;
+    if (currentDac.includes("Provence Santé") && (dpt === "13" || dpt === "04")) return true;
+  }
+  return false;
+}
+
 function filterRowsByCommune(rows) {
   if (selectedCommunes.includes("TOTAL") || selectedCommunes.length === 0) return rows;
   return rows.filter(r => {
-    return selectedCommunes.some(selCommune => 
-      selCommune === r.label || normalizeName(selCommune) === normalizeName(r.label)
-    );
+    return selectedCommunes.some(selCommune => {
+      // 1. Si selCommune contient le département explicite (ex: "La Garde (83)")
+      const match = selCommune.match(/^(.+)\s+\((\d{2})\)$/);
+      if (match) {
+        const commName = match[1].trim();
+        const dpt = match[2].trim();
+        const rowLabelMatch = r.label === commName || normalizeName(r.label) === normalizeName(commName);
+        if (!rowLabelMatch) return false;
+
+        const rowCp = String(r.cp || "").trim();
+        if (rowCp.startsWith(dpt)) return true;
+        if (dpt === "83" && String(r.sourceDac || "").includes("Var")) return true;
+        if (dpt === "84" && String(r.sourceDac || "").includes("Vaucluse")) return true;
+        if (dpt === "05" && String(r.sourceDac || "").includes("Hautes-Alpes")) return true;
+        if ((dpt === "13" || dpt === "04") && String(r.sourceDac || "").includes("Provence")) return true;
+        return false;
+      }
+
+      // 2. Commune standard
+      return selCommune === r.label || normalizeName(selCommune) === normalizeName(r.label);
+    });
   });
 }
 
@@ -1674,7 +1741,7 @@ function updateCommunesStyle() {
     const name = feature.properties?.DCOE_L_LIB || feature.properties?.nom || "";
     const codeOrName = cp || name || "UNKNOWN";
     const isCommuneSelected = !selectedCommunes.includes("TOTAL") &&
-      selectedCommunes.some(c => c === name || normalizeName(c) === normalizeName(name));
+      selectedCommunes.some(c => isCommuneSelectedMatch(c, feature));
 
     let fillColor;
     let fillOpacity = 0.45;
@@ -1925,6 +1992,8 @@ const COMMUNES_GEO_PROMISE = Promise.all([
       .filter(Boolean)
   );
 
+  initDuplicateCommuneNames(communesGeo);
+
   communesGeoLayer = L.geoJSON(communesGeo, {
     filter: (f) => f.properties?.REGION_COD === "93" || f.properties?.REGION === "Provence-Alpes-Côte d'Azur",
     style: (feature) => {
@@ -1942,12 +2011,13 @@ const COMMUNES_GEO_PROMISE = Promise.all([
       };
     },
     onEachFeature: (feature, layer) => {
+      const commId = getCommuneIdentifier(feature);
       const name = feature.properties?.DCOE_L_LIB || feature.properties?.nom || "Commune";
       const cp = feature.properties?.DCOE_C_COD || feature.properties?.code_insee || "";
 
       layer.on('mouseover', () => {
         const mode = modeSel.value;
-        let label = `${name} (${cp})`;
+        let label = `${commId} (${cp})`;
         if (mode === "dac" && DAC_MAP) {
           const dacName = DAC_MAP[cp] || DAC_MAP[name] || DAC_MAP[normalizeName(name)] || "Non renseigné";
           label += ` — ${dacName}`;
@@ -1962,19 +2032,19 @@ const COMMUNES_GEO_PROMISE = Promise.all([
       });
 
       layer.on('click', (e) => {
-        if (!name) return;
+        if (!commId) return;
 
-        // Basculer l'état de sélection de la commune cliquée
+        // Basculer l'état de sélection de la commune cliquée de manière unique
         if (selectedCommunes.includes("TOTAL")) {
-          selectedCommunes = [name];
+          selectedCommunes = [commId];
         } else {
-          if (selectedCommunes.includes(name)) {
-            selectedCommunes = selectedCommunes.filter(c => c !== name);
+          if (selectedCommunes.includes(commId)) {
+            selectedCommunes = selectedCommunes.filter(c => c !== commId);
             if (selectedCommunes.length === 0) {
               selectedCommunes = ["TOTAL"];
             }
           } else {
-            selectedCommunes.push(name);
+            selectedCommunes.push(commId);
           }
         }
 
@@ -3121,7 +3191,8 @@ function setCommuneOptions(communesGeo) {
     const dpt = f.properties?.DDEP_C_COD || insee.substring(0, 2);
     if (name && dpt) {
       if (!communesByDpt[dpt]) communesByDpt[dpt] = new Set();
-      communesByDpt[dpt].add(name);
+      const commId = getCommuneIdentifier(f);
+      communesByDpt[dpt].add(commId);
     }
   });
 
