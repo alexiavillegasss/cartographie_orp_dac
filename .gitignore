@@ -1,0 +1,7 @@
+# Fichier confidentiel contenant les codes d'accès des DAC en clair
+codes_secrets_dac.json
+
+# Fichiers Python et environnement
+__pycache__/
+*.pyc
+.env

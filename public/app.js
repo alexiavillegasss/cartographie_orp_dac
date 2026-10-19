@@ -80,9 +80,9 @@ async function loadImportedFilesFromStorage() {
     try {
       console.log("🔥 Chargement des données depuis Firebase Firestore...");
       const snapshot = await db.collection("imported_files").get();
-      // On filtre pour exclure les documents de favoris partagés
+      // On filtre pour exclure les documents de favoris partagés et les codes d'accès DAC
       importedFiles = snapshot.docs
-        .filter(doc => !doc.id.startsWith("favorites_"))
+        .filter(doc => !doc.id.startsWith("favorites_") && doc.id !== "auth_dac_hashes" && doc.data()?.type !== "auth_dac_hashes" && doc.data()?.type !== "favorites")
         .map(doc => doc.data());
       console.log(`✅ ${importedFiles.length} fichier(s) récupérés depuis Firebase.`);
     } catch (e) {
@@ -133,9 +133,9 @@ async function saveImportedFilesToStorage() {
       const batch = db.batch();
       
       const snapshot = await db.collection("imported_files").get();
-      // Ne supprimer que les fichiers CSV importés, JAMAIS les favoris
+      // Ne supprimer que les fichiers CSV importés, JAMAIS les favoris ni les codes d'accès DAC
       snapshot.docs
-        .filter(doc => !doc.id.startsWith("favorites_"))
+        .filter(doc => !doc.id.startsWith("favorites_") && doc.id !== "auth_dac_hashes" && doc.data()?.type !== "auth_dac_hashes" && doc.data()?.type !== "favorites")
         .forEach(doc => batch.delete(doc.ref));
       
       importedFiles.forEach(fileDoc => {
@@ -2712,6 +2712,40 @@ const ALL_DACS = [
   "DAC Var Ouest"
 ];
 
+// Empreintes SHA-256 des codes secrets par DAC (mises à jour par manage_dac_codes.py)
+let DAC_PASSWORD_HASHES = {
+  "DAC 13 Sud": "f019ef0116f13ef9fe3c595bae57b05758e4acdb15233b960e4e0b59f665bc8f",
+  "DAC Cap Azur Santé": "9de67129e2c398be0c7895f5c155b35102e2728b526eb2c48c11bfea32092e84",
+  "DAC Centre de Soutien Santé Social (C3S)": "b1a4422e8f85fcb34063f65bd5ccbd5e7ea55c14e8f67248e169a6972ef33401",
+  "Dac Est Azur": "74dd10c9c7ead5592df515941add1ec91ac3feb3ebffbde0798919ec1e5b9cf2",
+  "DAC Hautes-Alpes": "628b493fbd4a3405ca986edccf7b159be13c52d248af9497d67672bb4ea84dd2",
+  "DAC Provence Santé Coordination": "492c5fc2ad900ec22a658ef0c1a0dc48a2630e872008a109244b9528b72ffae8",
+  "Dac Ressources Santé Vaucluse": "b08246582e4ee9820f6aa0d8f77a5ae538eb1214c6a96fdfc12f547fef1a9012",
+  "DAC Var Est": "4d143e3f32323f0e21942530fb9d36e9f060073e37f967fc3a4d23724e49deeb",
+  "DAC Var Ouest": "ac82a1f2aeaa09143e616a033701bf4af8bc7884e9c4dfd79763bc0d32c8142b"
+};
+
+let liveDacHashes = { ...DAC_PASSWORD_HASHES };
+
+function initDacAuthHashesSync() {
+  if (!db) return;
+  try {
+    db.collection("imported_files").doc("auth_dac_hashes").onSnapshot((docSnap) => {
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        if (data && data.hashes && typeof data.hashes === "object") {
+          liveDacHashes = { ...DAC_PASSWORD_HASHES, ...data.hashes };
+          console.log("🔑 Empreintes des codes d'accès DAC synchronisées depuis Firebase.");
+        }
+      }
+    }, (err) => {
+      console.warn("⚠️ Impossible d'écouter auth_dac_hashes sur Firebase, utilisation des empreintes locales :", err);
+    });
+  } catch (e) {
+    console.warn("⚠️ Erreur initialisation sync auth_dac_hashes :", e);
+  }
+}
+
 function getCurrentDAC() {
   return localStorage.getItem("orp_current_dac") || "DAC Var Ouest";
 }
@@ -2767,12 +2801,17 @@ function initLogin() {
 
   if (!loginBtn || !passwordInput || !togglePasswordBtn || !loginScreen) return;
 
+  initDacAuthHashesSync();
+
   if (dacSelect) {
     setOptions(dacSelect, ALL_DACS.map(d => ({ value: d, label: d })));
     const savedDac = localStorage.getItem("orp_current_dac");
     if (savedDac && ALL_DACS.includes(savedDac)) {
       dacSelect.value = savedDac;
     }
+    dacSelect.addEventListener("change", () => {
+      if (errorMsg) errorMsg.textContent = "";
+    });
   }
 
   togglePasswordBtn.addEventListener("click", () => {
@@ -2788,20 +2827,21 @@ function initLogin() {
   });
 
   loginBtn.addEventListener("click", async () => {
-    const password = passwordInput.value;
+    const selectedDac = dacSelect ? dacSelect.value : "DAC Var Ouest";
+    const password = passwordInput.value.trim();
     const inputHash = await sha256(password);
-    const correctHash = "fe04b3ec2a429362ac1ffd3c6aae75f6488af17fa7a937c508cd530e803038ec";
+    const expectedHash = (liveDacHashes && liveDacHashes[selectedDac]) || DAC_PASSWORD_HASHES[selectedDac];
 
-    if (inputHash === correctHash || password === "orp2026") {
-      const selectedDac = dacSelect ? dacSelect.value : "DAC Var Ouest";
+    if (expectedHash && inputHash === expectedHash) {
       localStorage.setItem("orp_authenticated", "true");
       localStorage.setItem("orp_current_dac", selectedDac);
       errorMsg.textContent = "";
+      passwordInput.value = "";
       checkSession();
       initFavoritesSync();
       rebuildAllDataRows();
     } else {
-      errorMsg.textContent = "Mot de passe incorrect.";
+      errorMsg.textContent = `Code d'accès incorrect pour ${selectedDac}.`;
       passwordInput.value = "";
       passwordInput.focus();
     }
