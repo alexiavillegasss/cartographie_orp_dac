@@ -425,7 +425,8 @@ const dacColors = {
   "DAC Provence Santé Coordination": "#ffa2a0",
   "DAC Ressources Santé Vaucluse": "#7af8eb",
   "DAC Var Est": "#b9d8f6",
-  "DAC Var Ouest": "#ffa8d5"
+  "DAC Var Ouest": "#ffa8d5",
+  "FACS SUD": "#a78bfa"
 };
 
 const cptsColors = {
@@ -2709,7 +2710,8 @@ const ALL_DACS = [
   "DAC Provence Santé Coordination",
   "Dac Ressources Santé Vaucluse",
   "DAC Var Est",
-  "DAC Var Ouest"
+  "DAC Var Ouest",
+  "FACS SUD"
 ];
 
 // Empreintes SHA-256 des codes secrets par DAC (mises à jour par manage_dac_codes.py)
@@ -2722,7 +2724,8 @@ let DAC_PASSWORD_HASHES = {
   "DAC Provence Santé Coordination": "492c5fc2ad900ec22a658ef0c1a0dc48a2630e872008a109244b9528b72ffae8",
   "Dac Ressources Santé Vaucluse": "b08246582e4ee9820f6aa0d8f77a5ae538eb1214c6a96fdfc12f547fef1a9012",
   "DAC Var Est": "4d143e3f32323f0e21942530fb9d36e9f060073e37f967fc3a4d23724e49deeb",
-  "DAC Var Ouest": "ac82a1f2aeaa09143e616a033701bf4af8bc7884e9c4dfd79763bc0d32c8142b"
+  "DAC Var Ouest": "ac82a1f2aeaa09143e616a033701bf4af8bc7884e9c4dfd79763bc0d32c8142b",
+  "FACS SUD": "ffc4e5d5ab8ee786c5c2e2bd2f0fe3a9dadfed0ec190aa3bb981b5d4230d671a"
 };
 
 let liveDacHashes = { ...DAC_PASSWORD_HASHES };
