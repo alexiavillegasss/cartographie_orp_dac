@@ -28,6 +28,7 @@ const yearSel = document.getElementById("year");
 const periodTypeSel = document.getElementById("periodType");
 const periodValueSel = document.getElementById("periodValue");
 const parcoursSel = document.getElementById("parcours");
+const declarantSel = document.getElementById("declarantFilter");
 const dacSel = document.getElementById("dacSelect");
 const dacContainer = document.getElementById("dac-filter-container");
 const epciContainer = document.getElementById("epci-filter-container");
@@ -105,6 +106,7 @@ async function loadImportedFilesFromStorage() {
           detail: cleanAndRepairAccents(r.detail),
           sourceFile: cleanAndRepairAccents(r.sourceFile),
           sourceDac: cleanAndRepairAccents(r.sourceDac),
+          declarant: cleanAndRepairAccents(r.declarant || "DAC"),
           origins: cleanOrigins.length > 0 ? cleanOrigins : [STANDARD_DIFFICULTIES[0]]
         };
       });
@@ -387,7 +389,8 @@ function getManualRows() {
         ...r,
         isManual: true,
         sourceFile: file.fileName,
-        sourceDac: file.dacName
+        sourceDac: file.dacName,
+        declarant: r.declarant || "DAC"
       });
     });
   });
@@ -1354,6 +1357,22 @@ function filterRowsByTime(rows) {
   return out;
 }
 
+function isPartnerRow(r) {
+  if (!r) return false;
+  const dec = String(r.declarant || "").toLowerCase().trim();
+  return dec.includes("partenaire");
+}
+
+function filterRowsByDeclarant(rows) {
+  const filterSel = document.getElementById("declarantFilter");
+  if (!filterSel) return rows;
+  const val = filterSel.value;
+  if (!val || val === "ALL") return rows;
+  if (val === "Partenaire") return rows.filter(isPartnerRow);
+  if (val === "DAC") return rows.filter(r => !isPartnerRow(r));
+  return rows;
+}
+
 function filterRowsByParcours(rows) {
   if (!parcoursSel) return rows;
   const selected = parcoursSel.value;
@@ -1581,7 +1600,7 @@ function render() {
   })();
 
   const rawRows = DATA ? DATA.rows : [];
-  const rowsTime = filterRowsByCommune(filterRowsByEPCI(filterRowsByCPTS(filterRowsByDAC(filterRowsByParcours(filterRowsByTime(rawRows))))));
+  const rowsTime = filterRowsByDeclarant(filterRowsByCommune(filterRowsByEPCI(filterRowsByCPTS(filterRowsByDAC(filterRowsByParcours(filterRowsByTime(rawRows)))))));
 
   // Mode Commune, DAC, CPTS, EPCI (Clustering & Marqueurs individuels)
   if (mode === "commune" || mode === "dac" || mode === "cpts" || mode === "epci") {
@@ -1597,12 +1616,30 @@ function render() {
       spiderfyOnMaxZoom: true,
       maxClusterRadius: 40,
       iconCreateFunction: function (cluster) {
+        const markers = cluster.getAllChildMarkers();
+        let partnerCount = 0;
+        let dacCount = 0;
+        markers.forEach(m => {
+          if (m.isPartner) partnerCount++;
+          else dacCount++;
+        });
+
         const childCount = cluster.getChildCount();
         const size = Math.min(80, 25 + (childCount * 3));
         const radius = size / 2;
+
+        let clusterClass = "bubble";
+        if (partnerCount > 0 && dacCount === 0) {
+          clusterClass += " bubble-partner";
+        } else if (partnerCount > 0 && dacCount > 0) {
+          clusterClass += " bubble-mixed";
+        } else {
+          clusterClass += " bubble-dac";
+        }
+
         return L.divIcon({
           className: "",
-          html: `<div class="bubble" style="width:${size}px; height:${size}px; font-size:${Math.max(12, size / 2.5)}px;">${childCount}</div>`,
+          html: `<div class="${clusterClass}" style="width:${size}px; height:${size}px; font-size:${Math.max(12, size / 2.5)}px;">${childCount}</div>`,
           iconSize: [size, size],
           iconAnchor: [radius, radius]
         });
@@ -1610,10 +1647,12 @@ function render() {
     });
 
     matchingRows.forEach(r => {
-      const bubbleClass = "mini-marker-bubble";
+      const isPartner = isPartnerRow(r);
+      const bubbleClass = `mini-marker-bubble ${isPartner ? "partner" : "dac"}`;
+      const markerTitle = `${r.label} (${isPartner ? "Signalement Partenaire" : "Signalement DAC"})`;
       const miniIcon = L.divIcon({
         className: "",
-        html: `<div class="${bubbleClass}" title="${r.label}"></div>`,
+        html: `<div class="${bubbleClass}" title="${markerTitle}"></div>`,
         iconSize: [16, 16],
         iconAnchor: [8, 8]
       });
@@ -1633,6 +1672,13 @@ function render() {
             <b>Date de survenue :</b> ${formatToFrDate(r.date)}
           </div>
           
+          <div style="font-size: 13px; color: #334155; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <b>Déclaré par :</b>
+            <span style="font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; ${isPartner ? 'background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc;' : 'background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;'}">
+              ${isPartner ? '🤝 Partenaire' : '🏥 DAC'}
+            </span>
+          </div>
+
           <div style="font-size: 13px; color: #334155; margin-bottom: 8px;">
             <b>Parcours :</b> ${parcoursStr}
           </div>
@@ -1666,6 +1712,7 @@ function render() {
       `;
       const marker = L.marker([r.lat, r.lng], { icon: miniIcon })
         .bindPopup(popupContent);
+      marker.isPartner = isPartner;
 
       markerClusterGroup.addLayer(marker);
     });
@@ -2122,6 +2169,10 @@ if (parcoursSel) {
   parcoursSel.addEventListener("change", render);
 }
 
+if (declarantSel) {
+  declarantSel.addEventListener("change", render);
+}
+
 if (dacSel) {
   dacSel.addEventListener("change", render);
 }
@@ -2374,14 +2425,24 @@ function parseToISODate(dateStr) {
   const s = String(dateStr).trim();
   if (!s) return "2026-09-01";
 
-  // DD/MM/YYYY or DD-MM-YYYY or DD/MM/YY
+  // DD/MM/YYYY or DD-MM-YYYY or MM/DD/YYYY
   const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m1) {
-    const dd = String(m1[1]).padStart(2, '0');
-    const mm = String(m1[2]).padStart(2, '0');
+    let p1 = parseInt(m1[1], 10);
+    let p2 = parseInt(m1[2], 10);
     let yy = m1[3];
     if (yy.length === 2) yy = "20" + yy;
-    return `${yy}-${mm}-${dd}`;
+
+    let dd = p1;
+    let mm = p2;
+    // Si p2 > 12 et p1 <= 12, c'est le format US MM/DD/YYYY (ex: 3/20/2026)
+    if (p2 > 12 && p1 <= 12) {
+      dd = p2;
+      mm = p1;
+    }
+    const ddStr = String(dd).padStart(2, '0');
+    const mmStr = String(mm).padStart(2, '0');
+    return `${yy}-${mmStr}-${ddStr}`;
   }
 
   // YYYY-MM-DD or YYYY/MM/DD
@@ -2570,15 +2631,32 @@ function buildRowsFromCSV(objs, cpGeo) {
   }
 
   const keys = Object.keys(objs[0]);
-  const findKey = (sub) => keys.find(k => k.toLowerCase().includes(sub.toLowerCase()));
+  const normStr = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const findKey = (sub) => {
+    const normSub = normStr(sub);
+    return keys.find(k => normStr(k).includes(normSub));
+  };
 
   const keyCommune = findKey("commune") || findKey("ville") || findKey("cp") || findKey("code postal") || (keys.length > 1 ? keys[1] : keys[0]);
-  const keyDate = findKey("date de survenue") || findKey("survenue") || findKey("date") || (keys.length > 2 ? keys[2] : keys[0]);
-  const keyOrig = findKey("origine") || findKey("motif") || findKey("rupture") || (keys.length > 3 ? keys[3] : keys[0]);
+  const keyDate = findKey("date") || findKey("survenue") || (keys.length > 2 ? keys[2] : keys[0]);
+  const keyOrig = findKey("origine") || findKey("motif") || findKey("rupture") || findKey("situation") || (keys.length > 3 ? keys[3] : keys[0]);
   const keyParcours = findKey("parcours") || (keys.length > 4 ? keys[4] : keys[0]);
-  const keyDetail = findKey("détail") || findKey("detail") || findKey("précision") || findKey("remarque") || findKey("commentaire") || findKey("difficult") || (keys.length > 5 ? keys[5] : keys[0]);
+  const keyDetail = findKey("detail") || findKey("precision") || findKey("remarque") || findKey("commentaire") || findKey("difficult") || (keys.length > 5 ? keys[5] : keys[0]);
+  const keyDeclarant = findKey("declarant") || findKey("declare") || findKey("structure") || findKey("source");
 
   for (const o of objs) {
+    const rawDeclarant = keyDeclarant ? String(o[keyDeclarant] ?? "").trim() : "";
+    let declarant = "DAC";
+    if (rawDeclarant) {
+      const normD = normStr(rawDeclarant);
+      if (normD.includes("partenaire")) {
+        declarant = "Partenaire";
+      } else if (normD.includes("dac")) {
+        declarant = "DAC";
+      } else {
+        declarant = rawDeclarant;
+      }
+    }
     const communeName = String(o[keyCommune] ?? "").trim();
     if (!communeName) continue;
 
@@ -2606,7 +2684,8 @@ function buildRowsFromCSV(objs, cpGeo) {
       lng: geo.lng,
       origins,
       parcours,
-      detail: String(o[keyDetail] ?? "").trim()
+      detail: String(o[keyDetail] ?? "").trim(),
+      declarant
     });
   }
 
@@ -2623,7 +2702,8 @@ function rowKey(r) {
   const ts = String(r.ts || "").trim();
   const date = String(r.date || "").trim();
   const cp = String(r.cp || "").trim();
-  return [ts, date, cp, origins, detail].join("::");
+  const dec = String(r.declarant || "DAC").trim();
+  return [ts, date, cp, origins, detail, dec].join("::");
 }
 
 function mergeRows(existing, incoming) {
@@ -2772,10 +2852,13 @@ function checkSession() {
   const allModals = document.querySelectorAll(".modal-overlay");
   allModals.forEach(m => m.classList.add("hidden"));
 
+  const mapLegend = document.getElementById("map-legend");
+
   if (isAuth === "true") {
     if (loginScreen) loginScreen.classList.add("hidden");
     if (dacBadge) dacBadge.classList.remove("session-hidden");
     if (floatingActions) floatingActions.classList.remove("session-hidden");
+    if (mapLegend) mapLegend.classList.remove("session-hidden");
     
     if (topbar) {
       topbar.classList.remove("session-hidden");
@@ -2786,6 +2869,7 @@ function checkSession() {
     if (loginScreen) loginScreen.classList.remove("hidden");
     if (dacBadge) dacBadge.classList.add("session-hidden");
     if (floatingActions) floatingActions.classList.add("session-hidden");
+    if (mapLegend) mapLegend.classList.add("session-hidden");
     if (topbar) {
       topbar.classList.add("session-hidden");
       topbar.classList.add("hidden");
@@ -3066,7 +3150,8 @@ function initDataImportModal() {
         isManual: true,
         sourceFile: file.name,
         sourceDac: currentDac,
-        importDate: importTimestamp
+        importDate: importTimestamp,
+        declarant: r.declarant || "DAC"
       }));
 
       const docEntry = {

@@ -162,6 +162,15 @@
     </div>
 
     <div class="filter-group">
+      <label for="declarantFilter">Déclaré par</label>
+      <select id="declarantFilter">
+        <option value="ALL" selected>Tous (DAC & Partenaires)</option>
+        <option value="DAC">Signalé par le DAC</option>
+        <option value="Partenaire">Signalé par un Partenaire</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
       <label for="mode">Affichage</label>
       <select id="mode">
         <option value="commune" selected>Par commune</option>
@@ -256,6 +265,19 @@
 
   <div id="map"></div>
 
+  <!-- Légende Origine du signalement (DAC / Partenaire) -->
+  <div id="map-legend" class="map-legend session-hidden">
+    <div class="legend-title">Origine signalement</div>
+    <div class="legend-item">
+      <span class="legend-dot legend-dac"></span>
+      <span>Déclaré par le DAC</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot legend-partner"></span>
+      <span>Déclaré par un Partenaire</span>
+    </div>
+  </div>
+
   <!-- Modal Gestion & Importation des Données DAC -->
   <div id="data-import-modal" class="modal-overlay hidden">
     <div class="modal-card">
@@ -297,6 +319,11 @@
           <div class="download-sample-box">
             <span>📋 Fiche réflexe :</span>
             <a href="./Fiche réflexe - Cartographie des ruptures de parcours (1).pdf?v=20261016" id="fiche-reflexe-link" class="sample-link" target="_blank">Télécharger la fiche réflexe</a>
+          </div>
+
+          <div class="download-sample-box" style="margin-top: 6px;">
+            <span>📄 Modèle CSV :</span>
+            <a href="./exemple_import_dac.csv" download="modele_import_dac_partenaires.csv" class="sample-link">Télécharger le modèle CSV (avec colonne Declarant)</a>
           </div>
         </div>
 
@@ -345,7 +372,7 @@
     </div>
   </div>
 
-  <script src="./app.js?v=20261026_01"></script>
+  <script src="./app.js?v=20261116_01"></script>
 
   <!-- Modal Actualités Mises à Jour DAC -->
   <div id="news-modal" class="modal-overlay hidden" style="z-index: 10002;">
